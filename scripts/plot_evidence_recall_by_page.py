@@ -48,14 +48,39 @@ DOMAIN_ALIASES: dict[str, str] = {
     "cdw": "CDW",
 }
 
-# Agent color_key -> legend display name mapping
-DISPLAY_NAMES: dict[str, str] = {
-    "zeroshot-gpt": "GPT",
-    "zeroshot-gemini": "Gemini",
+# Agent color_key -> legend display name mapping for bottom row (agent harness)
+DISPLAY_NAMES_AGENT: dict[str, str] = {
     "codex": "codex",
     "gemini-cli": "gemini-cli",
     "terminus-2-gpt": "terminus-2 (GPT)",
     "terminus-2-gemini": "terminus-2 (Gemini)",
+}
+
+# Model aliases for shorter display in top row (zeroshot)
+MODEL_ALIASES: dict[str, str] = {
+    "gemini-3-pro-preview": "gemini 3 pro",
+    "gemini-3-flash-preview": "gemini 3 flash",
+    "gpt-5-mini-2025-08-07": "gpt 5 mini",
+    "gpt-5.1-2025-11-13": "gpt 5.1",
+    "gpt-5.2-2025-12-11": "gpt 5.2",
+}
+
+# Color mapping for zeroshot models (top row)
+# GPT family: blue shades (darker = larger model)
+# Gemini family: orange shades (darker = larger model)
+MODEL_COLORS: dict[str, str] = {
+    "gpt 5.2": "#1f77b4",  # dark blue (larger)
+    "gpt 5 mini": "#7fbfff",  # light blue (smaller)
+    "gemini 3 pro": "#d95f02",  # dark orange (larger)
+    "gemini 3 flash": "#fdae61",  # light orange (smaller)
+}
+
+# Line styles for zeroshot models (GPT = solid, Gemini = dashed)
+MODEL_LINESTYLES: dict[str, str] = {
+    "gpt 5.2": "-",
+    "gpt 5 mini": "-",
+    "gemini 3 pro": "--",
+    "gemini 3 flash": "--",
 }
 
 parser = ArgumentParser(
@@ -108,122 +133,204 @@ figures_dir.mkdir(parents=True, exist_ok=True)
 # Filter to domains that have data
 domains = [d for d in ["supercon", "biosurfactants"] if all_data.get(d)]
 
-fig, axs = plt.subplots(1, len(domains), figsize=(6.75, 2.5), sharey=True)
+# Create 2x2 subplot: top row = zeroshot, bottom row = agent harness
+fig, axs = plt.subplots(2, len(domains), figsize=(6.75, 4.5), sharey=True)
 
-# Handle single subplot case
-if len(domains) == 1:
-    axs = [axs]
+# Row labels for the plot
+row_labels = ["Zeroshot", "Agent Harness"]
 
-legend_handles = []
-legend_labels = []
+# Define which agents belong to each row
+zeroshot_agents = {"zeroshot"}
+agent_harness_agents = {"codex", "gemini-cli", "terminus-2"}
 
-for i, domain in enumerate(domains):
-    ax = axs[i]
-    dfs = all_data[domain]
+# Separate legend tracking for top (zeroshot) and bottom (agent harness) rows
+top_legend_handles: list = []
+top_legend_labels: list[str] = []
+bottom_legend_handles: list = []
+bottom_legend_labels: list[str] = []
 
-    if not dfs:
-        ax.set_title(DOMAIN_ALIASES.get(domain, domain), fontsize=LABEL_FONT_SIZE)
-        ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
-        continue
+for row_idx, (row_label, agent_set) in enumerate(
+    [(row_labels[0], zeroshot_agents), (row_labels[1], agent_harness_agents)]
+):
+    for col_idx, domain in enumerate(domains):
+        ax = axs[row_idx, col_idx]
+        dfs = all_data[domain]
 
-    # Combine all DataFrames for this domain
-    df_combined = pd.concat(dfs, ignore_index=True)
-
-    # Plot each (agent, model) combination as a line
-    for (agent, model), group in df_combined.groupby(["agent", "model"]):
-        # Sort by page number and filter to max_page
-        group = group.sort_values("page")
-        group = group[group["page"] <= args.max_page]
-
-        if group.empty:
+        if not dfs:
+            ax.text(
+                0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes
+            )
             continue
 
-        # Determine color_key based on agent and model provider
-        model_name = model.split("/")[-1]
-        if agent in ("zeroshot", "terminus-2"):
-            suffix = "-gemini" if "gemini" in model_name else "-gpt"
-            color_key = agent + suffix
-        else:
-            color_key = agent
+        # Combine all DataFrames for this domain
+        df_combined = pd.concat(dfs, ignore_index=True)
 
-        color = AGENT_COLORS.get(color_key, "#333333")
-        linestyle = AGENT_LINESTYLES.get(color_key, "-")
-        display_name = DISPLAY_NAMES.get(color_key, color_key)
+        # Filter to agents in this row
+        df_row = df_combined[df_combined["agent"].isin(agent_set)]
 
-        # Plot line
-        line = ax.plot(
-            group["page"],
-            group["avg_evidence_recall"],
-            color=color,
-            linestyle=linestyle,
-            alpha=0.8,
-            linewidth=1.5,
-        )[0]
+        if df_row.empty:
+            ax.text(
+                0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes
+            )
+            continue
 
-        # Add error band
-        ax.fill_between(
-            group["page"],
-            group["avg_evidence_recall"] - group["avg_evidence_recall_sem"],
-            group["avg_evidence_recall"] + group["avg_evidence_recall_sem"],
-            color=color,
-            alpha=0.15,
+        # Plot each (agent, model) combination as a line
+        for (agent, model), group in df_row.groupby(["agent", "model"]):
+            # Sort by page number and filter to max_page
+            group = group.sort_values("page")
+            group = group[group["page"] <= args.max_page]
+
+            if group.empty:
+                continue
+
+            # Determine color_key and display_name based on row
+            model_name = model.split("/")[-1]
+            model_alias = MODEL_ALIASES.get(model_name, model_name)
+
+            if row_idx == 0:  # Top row (zeroshot) - use model names
+                display_name: str = model_alias
+                color: str = MODEL_COLORS.get(model_alias, "#333333")
+                linestyle: str = MODEL_LINESTYLES.get(model_alias, "-")
+            else:  # Bottom row (agent harness) - use agent names
+                if agent == "terminus-2":
+                    suffix = "-gemini" if "gemini" in model_name else "-gpt"
+                    color_key = agent + suffix
+                else:
+                    color_key = agent
+                display_name = DISPLAY_NAMES_AGENT.get(color_key, color_key)
+                color = AGENT_COLORS.get(color_key, "#333333")
+                linestyle = AGENT_LINESTYLES.get(color_key, "-")
+
+            # Plot line
+            line = ax.plot(
+                group["page"],
+                group["avg_evidence_recall"],
+                color=color,
+                linestyle=linestyle,
+                alpha=0.8,
+                linewidth=1.5,
+            )[0]
+
+            # Add error band
+            ax.fill_between(
+                group["page"],
+                group["avg_evidence_recall"] - group["avg_evidence_recall_sem"],
+                group["avg_evidence_recall"] + group["avg_evidence_recall_sem"],
+                color=color,
+                alpha=0.15,
+            )
+
+            # Add vertical line at max page for this agent/model
+            max_page_for_agent = int(group["page"].max())
+            ax.axvline(
+                x=max_page_for_agent,
+                color=color,
+                linestyle=linestyle,
+                alpha=0.5,
+                linewidth=1.0,
+            )
+
+            # Track legend entries separately for each row
+            if row_idx == 0:  # Top row
+                if display_name not in top_legend_labels:
+                    top_legend_handles.append(line)
+                    top_legend_labels.append(display_name)
+            else:  # Bottom row
+                if display_name not in bottom_legend_labels:
+                    bottom_legend_handles.append(line)
+                    bottom_legend_labels.append(display_name)
+
+        # Determine max page for this domain from all data (not just this row)
+        domain_max_page = (
+            int(df_combined["page"].max()) if not df_combined.empty else args.max_page
         )
+        domain_max_page = min(domain_max_page, args.max_page)  # Cap at args.max_page
 
-        # Add vertical line at max page for this agent/model
-        max_page_for_agent = int(group["page"].max())
-        ax.axvline(
-            x=max_page_for_agent,
-            color=color,
-            linestyle=":",
-            alpha=0.5,
-            linewidth=1.0,
-        )
+        # Set labels
+        if row_idx == 1:  # Bottom row
+            ax.set_xlabel("Page Number", fontsize=LABEL_FONT_SIZE)
+        if col_idx == 0:  # Left column
+            ax.set_ylabel("Evidence Recall", fontsize=LABEL_FONT_SIZE)
+        if row_idx == 0:  # Top row - add domain title
+            ax.set_title(DOMAIN_ALIASES.get(domain, domain), fontsize=LABEL_FONT_SIZE)
 
-        # Track legend entries (deduplicate by color_key)
-        if display_name not in legend_labels:
-            legend_handles.append(line)
-            legend_labels.append(display_name)
+        # Add row label on the right side
+        if col_idx == len(domains) - 1:
+            ax.annotate(
+                row_label,
+                xy=(1.02, 0.5),
+                xycoords="axes fraction",
+                fontsize=LABEL_FONT_SIZE,
+                ha="left",
+                va="center",
+                rotation=-90,
+            )
 
-    # Determine max page for this domain from the data
-    domain_max_page = (
-        int(df_combined["page"].max()) if not df_combined.empty else args.max_page
-    )
-    domain_max_page = min(domain_max_page, args.max_page)  # Cap at args.max_page
+        ax.tick_params(axis="both", labelsize=TICK_FONT_SIZE)
+        ax.grid(axis="both", alpha=0.3)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.set_xlim(1, domain_max_page)
+        ax.set_ylim(0, 1)
 
-    ax.set_xlabel("Page Number", fontsize=LABEL_FONT_SIZE)
-    if i == 0:
-        ax.set_ylabel("Evidence Recall", fontsize=LABEL_FONT_SIZE)
-    ax.set_title(DOMAIN_ALIASES.get(domain, domain), fontsize=LABEL_FONT_SIZE)
-    ax.tick_params(axis="both", labelsize=TICK_FONT_SIZE)
-    ax.grid(axis="both", alpha=0.3)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.set_xlim(1, domain_max_page)
-    ax.set_ylim(0, 1)
-
-# Add legend at bottom (only include agents with results)
-# Sort handles: GPT/codex variants first (top row), Gemini variants second (bottom row)
-if legend_handles:
-    gpt_labels = ["GPT", "codex", "terminus-2 (GPT)"]
-    # Create (handle, label) pairs and sort
-    handle_label_pairs = list(zip(legend_handles, legend_labels))
-    sorted_pairs = sorted(
-        handle_label_pairs,
+# Add separate legends for top and bottom rows
+# Top row legend (zeroshot): sort by GPT first, then Gemini
+if top_legend_handles:
+    gpt_model_order = ["gpt 5.2", "gpt 5 mini"]
+    gemini_model_order = ["gemini 3 flash", "gemini 3 pro"]
+    top_pairs = list(zip(top_legend_handles, top_legend_labels))
+    sorted_top = sorted(
+        top_pairs,
         key=lambda x: (
-            0 if x[1] in gpt_labels else 1,
-            gpt_labels.index(x[1]) if x[1] in gpt_labels else 0,
+            0 if x[1] in gpt_model_order else 1,
+            gpt_model_order.index(x[1])
+            if x[1] in gpt_model_order
+            else gemini_model_order.index(x[1])
+            if x[1] in gemini_model_order
+            else 99,
         ),
     )
-    sorted_handles, sorted_labels = zip(*sorted_pairs) if sorted_pairs else ([], [])
+    sorted_top_handles, sorted_top_labels = zip(*sorted_top) if sorted_top else ([], [])
 
+    # Position legend between top and bottom rows
     fig.legend(
-        sorted_handles,
-        sorted_labels,
-        loc="lower center",
-        ncol=3,
+        sorted_top_handles,
+        sorted_top_labels,
+        loc="center",
+        ncol=4,
         fontsize=LEGEND_FONT_SIZE,
         frameon=False,
-        bbox_to_anchor=(0.5, -0.15),
+        bbox_to_anchor=(0.5, 0.52),
+    )
+
+# Bottom row legend (agent harness): sort by GPT-based first, then Gemini-based
+if bottom_legend_handles:
+    gpt_agent_order = ["codex", "terminus-2 (GPT)"]
+    gemini_agent_order = ["gemini-cli", "terminus-2 (Gemini)"]
+    bottom_pairs = list(zip(bottom_legend_handles, bottom_legend_labels))
+    sorted_bottom = sorted(
+        bottom_pairs,
+        key=lambda x: (
+            0 if x[1] in gpt_agent_order else 1,
+            gpt_agent_order.index(x[1])
+            if x[1] in gpt_agent_order
+            else gemini_agent_order.index(x[1])
+            if x[1] in gemini_agent_order
+            else 99,
+        ),
+    )
+    sorted_bottom_handles, sorted_bottom_labels = (
+        zip(*sorted_bottom) if sorted_bottom else ([], [])
+    )
+
+    fig.legend(
+        sorted_bottom_handles,
+        sorted_bottom_labels,
+        loc="lower center",
+        ncol=4,
+        fontsize=LEGEND_FONT_SIZE,
+        frameon=False,
+        bbox_to_anchor=(0.5, -0.02),
     )
 
 plt.tight_layout()
