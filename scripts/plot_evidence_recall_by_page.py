@@ -83,6 +83,20 @@ MODEL_LINESTYLES: dict[str, str] = {
     "gemini 3 flash": "--",
 }
 
+# Alpha mapping: larger/pro models are darker (higher alpha)
+MODEL_ALPHAS: dict[str, float] = {
+    "gpt 5.2": 1.0,
+    "gpt 5 mini": 0.5,
+    "gemini 3 pro": 1.0,
+    "gemini 3 flash": 0.5,
+}
+
+# Alpha by model keyword: "pro" models are darker than "flash"
+MODEL_KEYWORD_ALPHAS: dict[str, float] = {
+    "pro": 1.0,
+    "flash": 0.5,
+}
+
 parser = ArgumentParser(
     description="Plot evidence recall by page number for each agent/model."
 )
@@ -116,6 +130,8 @@ for domain, output_dir in output_dirs:
         print(f"Warning: {recall_path} not found, skipping")
         continue
     df = pd.read_csv(recall_path)
+    # Skip qwen/qwen3-max model
+    df = df[df["model"] != "qwen/qwen3-max"]
     all_data[domain].append(df)
 
 # Check if we have any data
@@ -191,6 +207,7 @@ for row_idx, (row_label, agent_set) in enumerate(
                 display_name: str = model_alias
                 color: str = MODEL_COLORS.get(model_alias, "#333333")
                 linestyle: str = MODEL_LINESTYLES.get(model_alias, "-")
+                alpha: float = MODEL_ALPHAS.get(model_alias, 0.8)
             else:  # Bottom row (agent harness) - use agent names
                 if agent == "terminus-2":
                     suffix = "-gemini" if "gemini" in model_name else "-gpt"
@@ -200,6 +217,11 @@ for row_idx, (row_label, agent_set) in enumerate(
                 display_name = DISPLAY_NAMES_AGENT.get(color_key, color_key)
                 color = AGENT_COLORS.get(color_key, "#333333")
                 linestyle = AGENT_LINESTYLES.get(color_key, "-")
+                # Resolve alpha from underlying model (pro=dark, flash=light)
+                alpha = next(
+                    (a for kw, a in MODEL_KEYWORD_ALPHAS.items() if kw in model_name),
+                    0.8,
+                )
 
             # Plot line
             line = ax.plot(
@@ -207,7 +229,7 @@ for row_idx, (row_label, agent_set) in enumerate(
                 group["avg_evidence_recall"],
                 color=color,
                 linestyle=linestyle,
-                alpha=0.8,
+                alpha=alpha,
                 linewidth=1.5,
             )[0]
 
@@ -217,7 +239,7 @@ for row_idx, (row_label, agent_set) in enumerate(
                 group["avg_evidence_recall"] - group["avg_evidence_recall_sem"],
                 group["avg_evidence_recall"] + group["avg_evidence_recall_sem"],
                 color=color,
-                alpha=0.15,
+                alpha=alpha * 0.2,
             )
 
             # Add vertical line at max page for this agent/model
@@ -226,7 +248,7 @@ for row_idx, (row_label, agent_set) in enumerate(
                 x=max_page_for_agent,
                 color=color,
                 linestyle=linestyle,
-                alpha=0.5,
+                alpha=alpha * 0.6,
                 linewidth=1.0,
             )
 

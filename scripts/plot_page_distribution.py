@@ -84,6 +84,9 @@ for i, domain in enumerate(domains):
     total = df["count"].sum()
     density = df["count"] / total
 
+    # Compute mean page number
+    mean_page = (df["page"] * df["count"]).sum() / df["count"].sum()
+
     # Offset bars for each domain
     offset = (i - (len(domains) - 1) / 2) * bar_width
     ax.bar(
@@ -92,7 +95,15 @@ for i, domain in enumerate(domains):
         color=color,
         alpha=0.8,
         width=bar_width,
-        label=label,
+        label=f"{label} (mean={mean_page:.1f})",
+    )
+
+    # Add vertical line for mean page number
+    ax.axvline(
+        mean_page,
+        color=color,
+        linestyle="--",
+        linewidth=1.2,
     )
 
 ax.set_xlabel("Page Number", fontsize=LABEL_FONT_SIZE)

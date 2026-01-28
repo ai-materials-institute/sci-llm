@@ -20,6 +20,7 @@ from pathlib import Path
 from pbench_eval.plotting_utils import (
     TICK_FONT_SIZE,
     LABEL_FONT_SIZE,
+    get_display_label,
 )
 
 # Agent -> color mapping for consistent visualization
@@ -45,6 +46,23 @@ DISPLAY_NAMES: dict[str, str] = {
     "terminus-2": "Terminus-2",
 }
 
+# Model name aliases for shorter display
+MODEL_ALIASES: dict[str, str] = {
+    "gemini-3-pro-preview": "gemini-3-pro",
+    "gemini-3-flash-preview": "gemini-3-flash",
+    "gpt-5-mini-2025-08-07": "gpt-5-mini",
+    "gpt-5.1-2025-11-13": "gpt-5.1",
+    "gpt-5.2-2025-12-11": "gpt-5.2",
+}
+
+
+def get_model_alias(model_name: str) -> str:
+    """Get shortened model name for display."""
+    # Extract model name from provider/model format
+    short_name = model_name.split("/")[-1]
+    return MODEL_ALIASES.get(short_name, short_name)
+
+
 # Metrics to plot
 METRICS = [
     {
@@ -57,7 +75,7 @@ METRICS = [
         "name": "recall",
         "column": "avg_evidence_recall",
         "sem_column": "avg_evidence_recall_sem",
-        "label": "Evidence Recall",
+        "label": "Evidence Recovery Rate",
     },
     {
         "name": "f1",
@@ -120,7 +138,7 @@ for metric in METRICS:
     metric_sem_column = metric["sem_column"]
     metric_label = metric["label"]
 
-    fig, axs = plt.subplots(1, len(domains), figsize=(6, 3), sharey=False)
+    fig, axs = plt.subplots(len(domains), 1, figsize=(3.25, 3.5), sharex=True)
 
     for i, domain in enumerate(domains):
         ax = axs[i]
@@ -134,9 +152,14 @@ for metric in METRICS:
 
         df = pd.DataFrame(data)
 
-        # Create labels combining agent and model
+        # Skip specific models
+        SKIP_MODELS = {"qwen3-max", "gemini-3-flash-preview", "gpt-5-mini-2025-08-07"}
+        df = df[~df["model"].apply(lambda m: m.split("/")[-1]).isin(SKIP_MODELS)]
+
+        # Create labels consistent with plot_accuracy_vs_tokens.py legend
         df["label"] = df.apply(
-            lambda row: f"{row['agent']}\n({row['model'].split('/')[-1][:15]})", axis=1
+            lambda row: get_display_label(row["agent"], row["model"]),
+            axis=1,
         )
 
         # Sort by the current metric descending
@@ -156,9 +179,10 @@ for metric in METRICS:
         )
 
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(df["label"], fontsize=TICK_FONT_SIZE - 1)
-        ax.set_xlabel(metric_label, fontsize=LABEL_FONT_SIZE)
-        ax.set_title(DOMAIN_ALIASES.get(domain, domain), fontsize=LABEL_FONT_SIZE)
+        ax.set_yticklabels(df["label"], fontsize=TICK_FONT_SIZE)
+        if i == len(domains) - 1:
+            ax.set_xlabel(metric_label, fontsize=LABEL_FONT_SIZE)
+        ax.set_ylabel(DOMAIN_ALIASES.get(domain, domain), fontsize=LABEL_FONT_SIZE)
         ax.tick_params(axis="x", labelsize=TICK_FONT_SIZE)
         ax.set_xlim(0, 1)
         ax.grid(axis="x", alpha=0.3)

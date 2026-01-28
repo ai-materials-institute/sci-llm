@@ -177,7 +177,7 @@ for i, domain in enumerate(domains):
     ax.set_title(DOMAIN_ALIASES.get(domain, domain), fontsize=LABEL_FONT_SIZE)
     ax.set_xlabel("F1 Score", fontsize=LABEL_FONT_SIZE)
     if domain == domains[0]:
-        ax.set_ylabel("Evidence F1", fontsize=LABEL_FONT_SIZE)
+        ax.set_ylabel("Evidence Recovery Rate", fontsize=LABEL_FONT_SIZE)
     ax.tick_params(axis="both", labelsize=TICK_FONT_SIZE)
     ax.grid(axis="both", alpha=0.3)
     ax.spines["top"].set_visible(False)
