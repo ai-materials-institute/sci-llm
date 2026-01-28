@@ -167,6 +167,9 @@ def compute_evidence_recall_by_page(
 ) -> pd.DataFrame:
     """Compute evidence recall by page for all (agent, model) groups.
 
+    Iterates over (agent, model) pairs from predictions crossed with refnos from
+    ground truth to ensure missing predictions count as 0 recall.
+
     Args:
         df_pred: All predictions with columns [agent, model, refno, location.evidence]
         df_gt: Ground truth with columns [refno, location.evidence, location.page]
@@ -185,25 +188,58 @@ def compute_evidence_recall_by_page(
     # Collect recall values: {(agent, model, page): [recall values across refnos]}
     recall_by_page: dict[tuple[str, str, int], list[float]] = defaultdict(list)
 
-    for (agent, model, refno), group in df_pred.groupby(
-        ["agent", "model", "refno"], dropna=False
-    ):
-        # Filter ground truth for this refno (same matching logic as compute_evidence_f1_by_refno)
-        df_gt_refno = df_gt[
-            df_gt["refno"].str.lower().apply(lambda x: slugify(x))
-            == slugify(refno.lower())
-        ]
+    # Get unique (agent, model) pairs from predictions
+    agent_model_pairs = df_pred[["agent", "model"]].drop_duplicates().values.tolist()
 
-        if df_gt_refno.empty:
-            continue
+    # Get unique refnos from ground truth
+    gt_refnos = df_gt["refno"].unique()
 
-        # Compute per-page recall for this refno
-        page_recalls = compute_evidence_recall_for_refno_by_page(
-            group, df_gt_refno, evidence_column=evidence_column, page_column=page_column
-        )
+    # Pre-compute slugified GT refnos for efficient matching
+    df_gt = df_gt.copy()
+    df_gt["_refno_slug"] = df_gt["refno"].str.lower().apply(slugify)
 
-        for page, recall in page_recalls.items():
-            recall_by_page[(agent, model, page)].append(recall)
+    for agent, model in agent_model_pairs:
+        df_pred_am = df_pred[(df_pred["agent"] == agent) & (df_pred["model"] == model)]
+
+        for gt_refno in gt_refnos:
+            gt_refno_slug = slugify(str(gt_refno).lower())
+
+            # Filter ground truth for this refno
+            df_gt_refno = df_gt[df_gt["_refno_slug"] == gt_refno_slug]
+
+            if df_gt_refno.empty:
+                continue
+
+            # Find matching predictions for this refno
+            df_pred_refno = df_pred_am[
+                df_pred_am["refno"].str.lower().apply(lambda x: slugify(x))
+                == gt_refno_slug
+            ]
+
+            logger.info(f"Processing agent={agent}, model={model}, refno={gt_refno}")
+
+            # Get unique pages from GT
+            gt_pages = df_gt_refno[page_column].dropna().astype(int).unique()
+
+            # If no predictions, recall is 0 for all GT pages
+            if df_pred_refno.empty:
+                logger.info(f"No predictions for refno={gt_refno}, setting recall=0")
+                for page in gt_pages:
+                    recall_by_page[(agent, model, page)].append(0.0)
+                continue
+
+            # Compute per-page recall for this refno
+            logger.info(f"GT pages for refno={gt_refno}: {gt_pages}")
+            page_recalls = compute_evidence_recall_for_refno_by_page(
+                df_pred_refno,
+                df_gt_refno,
+                evidence_column=evidence_column,
+                page_column=page_column,
+            )
+
+            for page in gt_pages:
+                recall = page_recalls.get(page, 0.0)
+                recall_by_page[(agent, model, page)].append(recall)
 
     # Aggregate across refnos
     results = []
