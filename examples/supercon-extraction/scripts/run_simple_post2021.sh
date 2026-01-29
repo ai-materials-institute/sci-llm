@@ -19,11 +19,9 @@ cmd_args=$@
 # Server/model combinations
 # Format: "server:model" or "server:model:kwarg1=value1,kwarg2=value2"
 combinations=(
-  # "gemini:gemini-3-pro-preview"
-  # "gemini:gemini-3-flash-preview"
-  # "openai:gpt-5.2-2025-12-11:openai_reasoning_effort=high"
-  # "openai:gpt-5.2-2025-12-11:openai_reasoning_effort=medium"
-  # "openai:gpt-5-mini-2025-08-07:openai_reasoning_effort=high"
+  "gemini:gemini-3-pro-preview"
+  "gemini:gemini-3-flash-preview"
+  "openai:gpt-5.2-2025-12-11:openai_reasoning_effort=medium"
   "openai:gpt-5-mini-2025-08-07:openai_reasoning_effort=medium"
 )
 

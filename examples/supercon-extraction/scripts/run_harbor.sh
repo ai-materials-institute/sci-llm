@@ -21,14 +21,14 @@ cmd_args=$@
 # Format: "agent:model" or "agent:model:kwarg1=value1,kwarg2=value2"
 combinations=(
   # "gemini-cli:gemini/gemini-3-pro-preview"
-  "codex:openai/gpt-5.2-2025-12-11:reasoning_effort=medium"
+  # "codex:openai/gpt-5.2-2025-12-11:reasoning_effort=medium"
   # "gemini-cli:gemini/gemini-3-flash-preview"
-  "codex:openai/gpt-5-mini-2025-08-07:reasoning_effort=medium"
-  # "terminus-2:gemini/gemini-3-pro-preview"
-  "terminus-2:openai/gpt-5.2-2025-12-11:reasoning_effort=medium"
+  # "codex:openai/gpt-5-mini-2025-08-07:reasoning_effort=medium"
+  "terminus-2:gemini/gemini-3-pro-preview"
+  # "terminus-2:openai/gpt-5.2-2025-12-11:reasoning_effort=medium"
 )
 BATCH_SIZE=50
-NUM_BATCHES=1
+NUM_BATCHES=4
 
 for combo in "${combinations[@]}"; do
   # Parse agent:model:kwargs format
@@ -47,7 +47,8 @@ for combo in "${combinations[@]}"; do
   echo "Running agent=${agent} model=${model} kwargs=${kwargs}"
   echo "========================================"
 
-  for batch in $(seq 1 $NUM_BATCHES); do
+  # NOTE: we already have the first 50 tasks
+  for batch in $(seq 2 $NUM_BATCHES); do
     echo "Running batch ${batch}/${NUM_BATCHES}..."
     # CMD="uv run python ../../src/harbor-task-gen/run_batch_harbor.py jobs start \
     #   --hf-tasks-repo kilian-group/supercon-extraction-harbor-tasks --hf-tasks-version head \
