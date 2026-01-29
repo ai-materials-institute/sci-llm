@@ -30,6 +30,7 @@ import logging
 import re
 from pathlib import Path
 
+from dotenv import load_dotenv
 import pandas as pd
 from tqdm.asyncio import tqdm
 import fitz  # PyMuPDF
@@ -42,6 +43,9 @@ logger = logging.getLogger(__name__)
 
 # Maximum number of conditions to store in CSV
 MAX_CONDITIONS = 10
+
+# Default concurrency limit for parallel processing
+MAX_CONCURRENT_TASKS = 20
 
 
 def load_prompt(prompt_path: Path) -> str:
@@ -400,8 +404,9 @@ async def extract_properties(args: argparse.Namespace) -> None:
     # Sanitize model name for filename
     model_name_safe = args.model_name.replace("/", "--")
 
-    # Process each PDF
-    for pdf_path in tqdm(reordered_pdf_files, desc="Processing PDFs"):
+    # Filter PDFs to process
+    pdfs_to_process: list[Path] = []
+    for pdf_path in reordered_pdf_files:
         refno = pdf_path.stem
 
         # Skip if refno is specified and this isn't it
@@ -421,14 +426,33 @@ async def extract_properties(args: argparse.Namespace) -> None:
             )
             continue
 
-        # Process the paper
-        rows, usage = await process_paper(
-            pdf_path, prompt, llm, inf_gen_config, args.model_name
-        )
+        pdfs_to_process.append(pdf_path)
+
+    if len(pdfs_to_process) == 0:
+        logger.info("No PDFs to process (all already exist or filtered out)")
+        return
+
+    # Create semaphore to limit concurrency
+    max_concurrent = args.max_concurrent
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def process_and_save(pdf_path: Path) -> None:
+        """Process a single PDF and save results."""
+        async with semaphore:
+            refno = pdf_path.stem
+            logger.info(f"Processing {refno}...")
+
+            # Process the paper
+            rows, usage = await process_paper(
+                pdf_path, prompt, llm, inf_gen_config, args.model_name
+            )
 
         # Save to CSV
+        output_filename = (
+            f"extracted_properties__model={model_name_safe}__refno={refno}.csv"
+        )
+        output_path = preds_dir / output_filename
         if len(rows) > 0:
-            # Create DataFrame from list of Series
             df = pd.DataFrame(rows, dtype=str)
             df.to_csv(output_path, index=False)
             logger.info(f"Saved {len(rows)} properties from {refno} to {output_path}")
@@ -446,9 +470,18 @@ async def extract_properties(args: argparse.Namespace) -> None:
             json.dump(usage, f, indent=2)
         logger.info(f"Saved usage for {refno} to {usage_path}")
 
+    # Process all PDFs concurrently with semaphore limiting
+    logger.info(
+        f"Processing {len(pdfs_to_process)} PDFs with max {max_concurrent} concurrent tasks..."
+    )
+    tasks = [process_and_save(pdf_path) for pdf_path in pdfs_to_process]
+    await asyncio.gather(*tasks)
+
 
 def main() -> None:
     """CLI entry point for console script."""
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         description="Mass extract properties from PDF files using unsupervised LLM extraction"
     )
@@ -498,6 +531,12 @@ def main() -> None:
         type=int,
         default=65536,
         help="Maximum number of output tokens for LLM response (default: 65536)",
+    )
+    parser.add_argument(
+        "--max_concurrent",
+        type=int,
+        default=MAX_CONCURRENT_TASKS,
+        help=f"Maximum number of concurrent tasks (default: {MAX_CONCURRENT_TASKS})",
     )
 
     args = parser.parse_args()
