@@ -230,6 +230,7 @@ def compute_recall_per_material_property(
             ),
             "num_property_matches": len(group),
             "num_property_material_matches": num_matches,
+            "has_property_material_match": int(num_matches > 0),
             "recall_score": recall_score,
             "evidence_score": evidence_score_val,
             "matches": ", ".join(
@@ -387,6 +388,7 @@ def compute_precision_per_material_property(
             ),
             "num_property_matches": len(group),
             "num_property_material_matches": num_matches,
+            "has_property_material_match": int(num_matches > 0),
             "precision_score": precision_score,
             "evidence_score": evidence_score_val,
             "matches": ", ".join(

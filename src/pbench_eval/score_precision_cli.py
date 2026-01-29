@@ -140,6 +140,9 @@ def compute_precision_by_refno(args: Namespace) -> pd.DataFrame:
             property_material_matches=pd.NamedAgg(
                 column="num_property_material_matches", aggfunc=counta
             ),
+            has_property_material_match=pd.NamedAgg(
+                column="has_property_material_match", aggfunc="mean"
+            ),
             num_pred=pd.NamedAgg(column="id_pred", aggfunc="size"),
         )
         .reset_index()
@@ -294,9 +297,9 @@ def cli_main() -> None:
         else:
             trials_lookup = count_zeroshot_trials_per_group(
                 args.output_dir.resolve(),
-                include_reasoning_effort=True,
+                # include_reasoning_effort=True,
             )
-            has_reasoning_effort = True
+            has_reasoning_effort = False
     else:
         # Count number of trials (refnos) per agent/model
         if False:
@@ -408,7 +411,6 @@ def cli_main() -> None:
         return trials_lookup.get(key, 1)
 
     acc_by_refno["num_trials"] = acc_by_refno.apply(get_trials_count, axis=1)
-
     acc = (
         acc_by_refno.groupby(group_cols)
         .apply(

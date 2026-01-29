@@ -151,6 +151,9 @@ def compute_recall_by_refno(args: Namespace) -> pd.DataFrame:
             property_material_matches=pd.NamedAgg(
                 column="num_property_material_matches", aggfunc=counta
             ),
+            has_property_material_match=pd.NamedAgg(
+                column="has_property_material_match", aggfunc="mean"
+            ),
             num_gt=pd.NamedAgg(column="id_gt", aggfunc="size"),
         )
         .reset_index()

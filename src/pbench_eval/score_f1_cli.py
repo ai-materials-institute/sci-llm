@@ -68,6 +68,20 @@ def compute_f1_by_refno(args: Namespace) -> pd.DataFrame:
         (f1_by_refno["evidence_score_x"] * f1_by_refno["evidence_score_y"])
         / (f1_by_refno["evidence_score_x"] + f1_by_refno["evidence_score_y"] + 1e-8)
     )
+    # import pdb; pdb.set_trace()
+    # compute property-material F1 score
+    # has_property_material_match_x is from precision, has_property_material_match_y is from recall
+    f1_by_refno["property_material_f1_score"] = 2 * (
+        (
+            f1_by_refno["has_property_material_match_x"]
+            * f1_by_refno["has_property_material_match_y"]
+        )
+        / (
+            f1_by_refno["has_property_material_match_x"]
+            + f1_by_refno["has_property_material_match_y"]
+            + 1e-8
+        )
+    )
     return f1_by_refno
 
 
@@ -94,6 +108,13 @@ def cli_main() -> None:
         lambda row: trials_lookup.get((row["agent"], row["model"])), axis=1
     )
 
+    # Save f1_by_refno to scores directory
+    scores_dir = args.output_dir / "scores"
+    scores_dir.mkdir(parents=True, exist_ok=True)
+    f1_by_refno_path = scores_dir / "f1_by_refno.csv"
+    f1_by_refno.to_csv(f1_by_refno_path, index=False)
+    logger.info(f"Saved F1 scores by refno to {f1_by_refno_path}")
+
     f1 = (
         f1_by_refno.groupby(["agent", "model"])
         .apply(
@@ -104,6 +125,10 @@ def cli_main() -> None:
                     ),
                     "avg_evidence_f1": mean_sem_with_n(
                         g["evidence_f1_score"].tolist(), g["num_trials"].iloc[0]
+                    ),
+                    "avg_property_material_f1": mean_sem_with_n(
+                        g["property_material_f1_score"].tolist(),
+                        g["num_trials"].iloc[0],
                     ),
                     "successful_count": len(g),
                     "num_trials": g["num_trials"].iloc[0],
