@@ -100,8 +100,9 @@ def setup_logging(log_level: str = "INFO") -> None:
         log_level: Logging level (default: "INFO")
 
     """
-    # Suppress logging from httpx
+    # Suppress noisy loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("google_genai.models").setLevel(logging.WARNING)
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
