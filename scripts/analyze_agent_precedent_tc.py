@@ -1,9 +1,13 @@
-f"""Analyze and visualize stats of LLM agent trajectory results for precedent search.
+"""
+Analyze and visualize stats of LLM agent trajectory results for precedent search.
 
 Loads scored results CSVs and extracts tool use counts from trajectory.json files.
 Outputs summary statistics including mean ± stderr of tool use counts across runs.
 
 Usage:
+1. Get precedent-search-agent-metadata.zip and metadata CSV files from James, then
+2. Unzip precedent-search-agent-metadata.zip and place the contents in the current directory.
+3. Run the script:
     uv run python scripts/analyze_agent_precedent_tc.py \
         precedent-search-agent-metadata/scored_results_tc-gemini-cli-run-{1,2,3}_detailed.csv \
         precedent-search-agent-metadata/scored_results_tc-codex-run-{1,2,3}_detailed.csv \
@@ -627,14 +631,12 @@ def plot_url_distribution_stacked_horizontal(
     Args:
         dist_by_cat: Dict from compute_tool_call_distribution_by_category
         output_dir: Directory to save the charts
-        top_n: Number of top domains to show (others grouped as "Other")
+        top_n: Number of top domains to show (others grouped as "other")
     """
+    FONT_SIZE = 24
+    LEGEND_FONT_SIZE = 14
+    TICK_LABEL_SIZE = 14
     agents = list(dist_by_cat.keys())
-    category_short = {
-        CATEGORY_INCORRECT_CLASS: "Incorrect Class",
-        CATEGORY_CORRECT_WRONG_VAL: "Correct + Wrong Val",
-        CATEGORY_FULLY_CORRECT: "Fully Correct",
-    }
 
     for agent in agents:
         fig, ax = plt.subplots(figsize=(10, 4))
@@ -652,9 +654,16 @@ def plot_url_distribution_stacked_horizontal(
             continue
 
         domain_list = sorted(all_domains)
-        cmap = plt.cm.get_cmap("tab20", len(domain_list) + 1)
+        # Display domains in legend in order of CATEGORY_FULLY_CORRECT top N domains then CATEGORY_CORRECT_WRONG_VAL top N domains then CATEGORY_INCORRECT_CLASS top N domains then "other"
+        domain_list = []
+        for cat in [CATEGORY_FULLY_CORRECT, CATEGORY_CORRECT_WRONG_VAL, CATEGORY_INCORRECT_CLASS]:
+            cat_dist = dist_by_cat[agent].get(cat, {})
+            top_items = sorted(cat_dist.items(), key=lambda x: x[1], reverse=True)[:top_n]
+            domain_list.extend(d for d, _ in top_items if d not in domain_list)
+        num_colors = 20 # NOTE: 20 colors are enough for this task, higher than len(domain_list). Same num_colors ensures consistent colors across agents.
+        cmap = plt.get_cmap("tab20", num_colors)
         domain_colors = {d: cmap(i) for i, d in enumerate(domain_list)}
-        domain_colors["Other"] = cmap(len(domain_list))
+        domain_colors["other"] = cmap(num_colors-1)
 
         y_positions = np.arange(len(CATEGORIES))
         bar_height = 0.6
@@ -664,7 +673,7 @@ def plot_url_distribution_stacked_horizontal(
             if not cat_dist:
                 continue
 
-            # Get top N domains + "Other"
+            # Get top N domains + "other"
             sorted_items = sorted(cat_dist.items(), key=lambda x: x[1], reverse=True)
             top_items = sorted_items[:top_n]
             other_frac = sum(frac for _, frac in sorted_items[top_n:])
@@ -689,35 +698,35 @@ def plot_url_distribution_stacked_horizontal(
                     other_frac,
                     height=bar_height,
                     left=left,
-                    color=domain_colors["Other"],
+                    color=domain_colors["other"],
                     edgecolor="white",
                     linewidth=0.5,
                 )
 
         ax.set_yticks(y_positions)
-        ax.set_yticklabels([c for c in CATEGORIES])
-        ax.set_xlabel("Fraction")
-        ax.set_title(f"{agent} - URL Distribution by Correctness Category")
+        ax.set_yticklabels([c for c in CATEGORIES], fontsize=FONT_SIZE)
+        ax.set_xlabel(f"{AGENT2AGENT_NAME[agent]} - Fraction of Tool Calls", fontsize=TICK_LABEL_SIZE)
         ax.set_xlim(0, 1)
         ax.grid(axis="x", alpha=0.3)
+        ax.tick_params(axis="both", labelsize=TICK_LABEL_SIZE)
 
         # Create legend with all domains
+        # Display domains in legend in order of CATEGORY_FULLY_CORRECT top N domains then CATEGORY_CORRECT_WRONG_VAL top N domains then CATEGORY_INCORRECT_CLASS top N domains then "other"
         legend_handles = [
             plt.Rectangle((0, 0), 1, 1, facecolor=domain_colors[d], edgecolor="white")
             for d in domain_list
         ]
         legend_handles.append(
-            plt.Rectangle((0, 0), 1, 1, facecolor=domain_colors["Other"], edgecolor="white")
+            plt.Rectangle((0, 0), 1, 1, facecolor=domain_colors["other"], edgecolor="white")
         )
-        legend_labels = domain_list + ["Other"]
+        legend_labels = domain_list + ["other"]
 
         ax.legend(
             legend_handles,
             legend_labels,
             loc="center left",
             bbox_to_anchor=(1.0, 0.5),
-            fontsize=9,
-            title="Domain",
+            fontsize=LEGEND_FONT_SIZE
         )
 
         plt.tight_layout()
