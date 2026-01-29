@@ -17,6 +17,7 @@ from tabulate import tabulate
 import pbench
 from pbench_eval.cli_utils import add_scoring_args
 from pbench_eval.score_f1_cli import compute_f1_by_refno
+from pbench_eval.score_recall_cli import compute_recall_by_refno
 from pbench_eval.stats import padded_mean, padded_sem
 from pbench_eval.token_utils import (
     collect_harbor_token_usage,
@@ -52,21 +53,25 @@ def aggregate_accuracy_tokens(args: Namespace) -> pd.DataFrame:
             args.output_dir.resolve(),
         )
     # Get F1 scores by refno
-    f1_by_refno = compute_f1_by_refno(args)
-    f1_by_refno["num_trials"] = f1_by_refno.apply(
+    if True:
+        score_by_refno = compute_f1_by_refno(args)
+        score_name = "f1_score"
+    else:
+        # NOTE: we will use recall as our metric of choice for the property extraction datasets.
+        # F1 no longer makes sense given that we only have Gemini verified positives
+        score_by_refno = compute_recall_by_refno(args)
+        score_name = "recall_score"
+    score_by_refno["num_trials"] = score_by_refno.apply(
         lambda row: trials_lookup.get((row["agent"], row["model"]), 0), axis=1
     )
 
-    f1_mean = (
-        f1_by_refno.groupby(["agent", "model"])
+    score_mean = (
+        score_by_refno.groupby(["agent", "model"])
         .apply(
             lambda g: pd.Series(
                 {
-                    "avg_f1_score": padded_mean(
-                        g["f1_score"].tolist(), g["num_trials"].iloc[0]
-                    ),
-                    "avg_evidence_f1": padded_mean(
-                        g["evidence_f1_score"].tolist(), g["num_trials"].iloc[0]
+                    "avg_score": padded_mean(
+                        g[score_name].tolist(), g["num_trials"].iloc[0]
                     ),
                     "successful_count": len(g),
                     "num_trials": g["num_trials"].iloc[0],
@@ -76,16 +81,13 @@ def aggregate_accuracy_tokens(args: Namespace) -> pd.DataFrame:
         )
         .reset_index()
     )
-    f1_sem = (
-        f1_by_refno.groupby(["agent", "model"])
+    score_sem = (
+        score_by_refno.groupby(["agent", "model"])
         .apply(
             lambda g: pd.Series(
                 {
-                    "avg_f1_score": padded_sem(
-                        g["f1_score"].tolist(), g["num_trials"].iloc[0]
-                    ),
-                    "avg_evidence_f1": padded_sem(
-                        g["evidence_f1_score"].tolist(), g["num_trials"].iloc[0]
+                    "avg_score": padded_sem(
+                        g[score_name].tolist(), g["num_trials"].iloc[0]
                     ),
                     "successful_count": len(g),
                     "num_trials": g["num_trials"].iloc[0],
@@ -139,11 +141,11 @@ def aggregate_accuracy_tokens(args: Namespace) -> pd.DataFrame:
     )
 
     # Merge F1 and x-axis metric
-    merged = f1_mean.merge(
+    merged = score_mean.merge(
         x_metric_mean, left_on=["agent", "model"], right_on=["agent", "model_name"]
     )
     merged = merged.merge(
-        f1_sem[["agent", "model", "avg_f1_score", "avg_evidence_f1"]],
+        score_sem[["agent", "model", "avg_score"]],
         on=["agent", "model"],
         suffixes=("", "_sem"),
     )

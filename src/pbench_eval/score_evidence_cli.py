@@ -14,6 +14,7 @@ uv run pbench-score-evidence \
 
 import argparse
 import logging
+from pathlib import Path
 import sys
 
 import pandas as pd
@@ -164,7 +165,7 @@ def compute_evidence_recall_by_page(
     df_gt: pd.DataFrame,
     evidence_column: str = "location.evidence",
     page_column: str = "location.page",
-) -> pd.DataFrame:
+) -> dict[tuple[str, str, int], list[float]]:
     """Compute evidence recall by page for all (agent, model) groups.
 
     Iterates over (agent, model) pairs from predictions crossed with refnos from
@@ -177,13 +178,10 @@ def compute_evidence_recall_by_page(
         page_column: Column name containing page numbers
 
     Returns:
-        DataFrame with columns: agent, model, page, avg_evidence_recall,
-        avg_evidence_recall_sem, count
+        Dict mapping (agent, model, page) to list of recall values across refnos
 
     """
     from collections import defaultdict
-
-    from pbench_eval.stats import padded_mean, padded_sem
 
     # Collect recall values: {(agent, model, page): [recall values across refnos]}
     recall_by_page: dict[tuple[str, str, int], list[float]] = defaultdict(list)
@@ -216,20 +214,21 @@ def compute_evidence_recall_by_page(
                 == gt_refno_slug
             ]
 
-            logger.info(f"Processing agent={agent}, model={model}, refno={gt_refno}")
+            logger.debug(f"Processing agent={agent}, model={model}, refno={gt_refno}")
+            # import pdb; pdb.set_trace()
 
             # Get unique pages from GT
             gt_pages = df_gt_refno[page_column].dropna().astype(int).unique()
 
             # If no predictions, recall is 0 for all GT pages
             if df_pred_refno.empty:
-                logger.info(f"No predictions for refno={gt_refno}, setting recall=0")
+                logger.debug(f"No predictions for refno={gt_refno}, setting recall=0")
                 for page in gt_pages:
                     recall_by_page[(agent, model, page)].append(0.0)
                 continue
 
             # Compute per-page recall for this refno
-            logger.info(f"GT pages for refno={gt_refno}: {gt_pages}")
+            logger.debug(f"GT pages for refno={gt_refno}: {gt_pages}")
             page_recalls = compute_evidence_recall_for_refno_by_page(
                 df_pred_refno,
                 df_gt_refno,
@@ -241,23 +240,7 @@ def compute_evidence_recall_by_page(
                 recall = page_recalls.get(page, 0.0)
                 recall_by_page[(agent, model, page)].append(recall)
 
-    # Aggregate across refnos
-    results = []
-    for (agent, model, page), recall_values in recall_by_page.items():
-        results.append(
-            {
-                "agent": agent,
-                "model": model,
-                "page": page,
-                "avg_evidence_recall": padded_mean(recall_values, len(recall_values)),
-                "avg_evidence_recall_sem": padded_sem(
-                    recall_values, len(recall_values)
-                ),
-                "count": len(recall_values),
-            }
-        )
-
-    return pd.DataFrame(results)
+    return recall_by_page
 
 
 def compute_evidence_f1_by_refno(
@@ -327,30 +310,58 @@ def cli_main() -> None:
         default="location.evidence",
         help="Column name for evidence (default: location.evidence)",
     )
+    parser.add_argument(
+        "--jobs_dir_list",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="List of jobs directories containing Harbor outputs. Each will be treated as a separate run.",
+    )
+    parser.add_argument(
+        "--output_dir_list",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="List of output directories containing predictions CSV files. Each will be treated as a separate run.",
+    )
 
     args = parser.parse_args()
     pbench.setup_logging(args.log_level)
 
     # Load predictions
-    if args.jobs_dir is not None:
-        logger.info(f"Loading predictions from Harbor jobs: {args.jobs_dir}")
-        df_pred = get_harbor_data(args.jobs_dir)
-    else:
-        pred_properties_dir = args.output_dir / args.preds_dirname
-        if not pred_properties_dir.exists():
-            logger.error(f"Directory not found: {pred_properties_dir}")
-            sys.exit(1)
-
-        csv_files = list(pred_properties_dir.glob("*.csv"))
-        if not csv_files:
-            logger.error(f"No CSV files found in {pred_properties_dir}")
-            sys.exit(1)
-
-        logger.info(f"Found {len(csv_files)} CSV file(s) in {pred_properties_dir}")
+    if len(args.jobs_dir_list) > 0:  # args.jobs_dir is not None:
         dfs = []
-        for csv_file in csv_files:
-            df = pd.read_csv(csv_file, dtype={"refno": str})
+        for jobs_dir in args.jobs_dir_list:
+            logger.info(f"Loading predictions from Harbor jobs: {jobs_dir}")
+            df = get_harbor_data(jobs_dir)
+            # Add run_id column and set it to output_dir name
+            run_id = jobs_dir.name
+            df["run_id"] = run_id
             dfs.append(df)
+        df_pred = pd.concat(dfs, ignore_index=True)
+    else:
+        dfs = []
+        for output_dir in args.output_dir_list:
+            if False:
+                pred_properties_dir = args.output_dir / args.preds_dirname
+            else:
+                pred_properties_dir = output_dir / args.preds_dirname
+            if not pred_properties_dir.exists():
+                logger.error(f"Directory not found: {pred_properties_dir}")
+                sys.exit(1)
+
+            csv_files = list(pred_properties_dir.glob("*.csv"))
+            if not csv_files:
+                logger.error(f"No CSV files found in {pred_properties_dir}")
+                sys.exit(1)
+
+            logger.info(f"Found {len(csv_files)} CSV file(s) in {pred_properties_dir}")
+            for csv_file in csv_files:
+                df = pd.read_csv(csv_file, dtype={"refno": str})
+                # Add run_id column and set it to output_dir name
+                run_id = output_dir.name
+                df["run_id"] = run_id
+                dfs.append(df)
         df_pred = pd.concat(dfs, ignore_index=True)
 
     logger.info(f"Loaded {len(df_pred)} prediction rows")
@@ -395,15 +406,29 @@ def cli_main() -> None:
         sys.exit(1)
 
     # Count trials
-    if args.jobs_dir is not None:
-        trials_lookup = count_trials_per_group(args.jobs_dir)
+    if len(args.jobs_dir_list) > 0:
+        trials_lookup: dict[tuple, int] = {}
+        for jobs_dir in args.jobs_dir_list:
+            dir_trials = count_trials_per_group(jobs_dir)
+            for key, count in dir_trials.items():
+                trials_lookup[key] = trials_lookup.get(key, 0) + count
     else:
-        trials_lookup = count_zeroshot_trials_per_group(args.output_dir.resolve())
+        # Aggregate trials across all output directories
+        trials_lookup: dict[tuple, int] = {}
+        for output_dir in args.output_dir_list:
+            dir_trials = count_zeroshot_trials_per_group(output_dir.resolve())
+            for key, count in dir_trials.items():
+                trials_lookup[key] = trials_lookup.get(key, 0) + count
 
-    # Compute evidence F1 by refno
-    evidence_by_refno = compute_evidence_f1_by_refno(
-        df_pred, df_gt, evidence_column=evidence_column
-    )
+    # Compute evidence F1 by refno, grouped by run_id
+    evidence_dfs = []
+    for run_id, df_run in df_pred.groupby("run_id"):
+        run_evidence = compute_evidence_f1_by_refno(
+            df_run, df_gt, evidence_column=evidence_column
+        )
+        run_evidence["run_id"] = run_id
+        evidence_dfs.append(run_evidence)
+    evidence_by_refno = pd.concat(evidence_dfs, ignore_index=True)
 
     if evidence_by_refno.empty:
         logger.error(
@@ -446,6 +471,7 @@ def cli_main() -> None:
 
     # Save detailed results per refno
     output_path = args.output_dir / "evidence_f1_by_refno.csv"
+    args.output_dir.mkdir(parents=True, exist_ok=True)
     evidence_by_refno.to_csv(output_path, index=False)
     logger.info(f"Saved detailed results to {output_path}")
 
@@ -504,14 +530,42 @@ def cli_main() -> None:
         page_distribution.to_csv(page_dist_path, index=False)
         logger.info(f"Saved GT page distribution to {page_dist_path}")
 
-        # Compute and save evidence recall by page
+        # Compute and save evidence recall by page, grouped by run_id
         if page_column in df_pred.columns:
-            recall_by_page = compute_evidence_recall_by_page(
-                df_pred,
-                df_gt,
-                evidence_column=evidence_column,
-                page_column=page_column,
-            )
+            from collections import defaultdict
+
+            from pbench_eval.stats import padded_mean, padded_sem
+
+            # Aggregate recall values across runs
+            combined_recall: dict[tuple[str, str, int], list[float]] = defaultdict(list)
+            for run_id, df_run in df_pred.groupby("run_id"):
+                run_recall = compute_evidence_recall_by_page(
+                    df_run,
+                    df_gt,
+                    evidence_column=evidence_column,
+                    page_column=page_column,
+                )
+                for key, values in run_recall.items():
+                    combined_recall[key].extend(values)
+
+            # Aggregate across refnos and runs
+            results = []
+            for (agent, model, page), recall_values in combined_recall.items():
+                results.append(
+                    {
+                        "agent": agent,
+                        "model": model,
+                        "page": page,
+                        "avg_evidence_recall": padded_mean(
+                            recall_values, len(recall_values)
+                        ),
+                        "avg_evidence_recall_sem": padded_sem(
+                            recall_values, len(recall_values)
+                        ),
+                        "count": len(recall_values),
+                    }
+                )
+            recall_by_page = pd.DataFrame(results)
             if not recall_by_page.empty:
                 # Sort by agent, model, page for readability
                 recall_by_page = recall_by_page.sort_values(
