@@ -467,6 +467,22 @@ def main() -> int:
     ):
         os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = os.environ["CLAUDE_CODE_API_TOKEN"]
 
+    # Qwen-coder agent: route through OpenRouter if available
+    agent_name, _ = _get_agent_model_from_argv(argv)
+    is_qwen_code = (
+        agent_name and "qwen" in agent_name.lower() and "code" in agent_name.lower()
+    )
+    if is_qwen_code:
+        # If we have an OpenRouter key, use it as the OpenAI key for this agent,
+        # because we are likely defaulting the Base URL to OpenRouter.
+        # This overrides any native OpenAI key that might be present.
+        if "OPENROUTER_API_KEY" in os.environ:
+            os.environ["OPENAI_API_KEY"] = os.environ["OPENROUTER_API_KEY"]
+
+        # If user didn't specify a base URL, default to OpenRouter
+        if "OPENAI_BASE_URL" not in os.environ:
+            os.environ["OPENAI_BASE_URL"] = "https://openrouter.ai/api/v1"
+
     argv = _rewrite_override_storage(argv)
     argv = _apply_modal_defaults(argv, modal_requested)
     argv = _rewrite_env_flag(argv)
