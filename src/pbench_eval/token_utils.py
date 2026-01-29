@@ -239,9 +239,11 @@ def _collect_from_trajectories_dir(
     if not trajectory_dir.exists():
         raise FileNotFoundError(f"Trajectories directory not found: {trajectory_dir}")
 
-    # Parse trajectory JSON files: trajectory__agent={agent}__model={model}__refno={refno}.json
+    # Parse trajectory JSON files:
+    # trajectory__agent={agent}__model={model}__refno={refno}.json
+    # trajectory__agent={agent}__model={model}__reasoning_effort={effort}__refno={refno}.json
     trajectory_pattern = re.compile(
-        r"trajectory__agent=([^_]+)__model=([^_]+)__refno=(.+)\.json"
+        r"trajectory__agent=([^_]+)__model=([^_]+)__(?:reasoning_effort=[^_]+__)?refno=(.+)\.json"
     )
 
     results: list[TokenUsageRecord] = []
@@ -273,43 +275,70 @@ def _collect_from_trajectories_dir(
             if reasoning_effort is None:
                 reasoning_effort = ""
 
-        # Extract usage from llm_response
+        # Extract usage from llm_response (single) or llm_responses (list)
         llm_response = trajectory.get("llm_response")
-        if llm_response is None:
-            print(f"No llm_response in {traj_file.name}")
-            continue
+        llm_responses = trajectory.get("llm_responses")
 
-        usage = llm_response.get("usage", {})
-        if not usage:
-            print(f"No usage data in {traj_file.name}")
-            continue
-
-        # Normalize token field names between OpenAI and Gemini
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        cached_tokens = usage.get("cached_tokens", 0)
-
-        # OpenAI uses output_tokens (includes reasoning_tokens)
-        # Gemini uses completion_tokens (excludes thinking_tokens)
-        if "output_tokens" in usage:
-            # OpenAI format
-            completion_tokens = usage["output_tokens"]
-            thinking_tokens = usage.get("reasoning_tokens", 0)
-            thinking_included_in_completion = True
+        if llm_responses is not None:
+            # List of responses - aggregate usage across all
+            usage_list = [r.get("usage", {}) for r in llm_responses if r.get("usage")]
+            if not usage_list:
+                print(f"No usage data in {traj_file.name}")
+                continue
+        elif llm_response is not None:
+            # Single response
+            usage = llm_response.get("usage", {})
+            if not usage:
+                print(f"No usage data in {traj_file.name}")
+                continue
+            usage_list = [usage]
         else:
-            # Gemini format
-            completion_tokens = usage.get("completion_tokens", 0)
-            thinking_tokens = usage.get("thinking_tokens", 0)
-            thinking_included_in_completion = False
+            print(f"No llm_response or llm_responses in {traj_file.name}")
+            continue
 
-        # Calculate cost
-        total_cost = calculate_cost(
-            model=model_name,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            cached_tokens=cached_tokens,
-            thinking_tokens=thinking_tokens,
-            thinking_included_in_completion=thinking_included_in_completion,
-        )
+        # Aggregate usage across all responses
+        prompt_tokens = 0
+        cached_tokens = 0
+        completion_tokens = 0
+        thinking_tokens = 0
+        total_cost: float | None = 0.0
+
+        for usage in usage_list:
+            u_prompt_tokens = usage.get("prompt_tokens", 0)
+            u_cached_tokens = usage.get("cached_tokens", 0)
+
+            # OpenAI uses output_tokens (includes reasoning_tokens)
+            # Gemini uses completion_tokens (excludes thinking_tokens)
+            if "output_tokens" in usage:
+                # OpenAI format
+                u_completion_tokens = usage["output_tokens"]
+                u_thinking_tokens = usage.get("reasoning_tokens", 0)
+                u_thinking_included_in_completion = True
+            else:
+                # Gemini format
+                # NOTE: completion_tokens may be None
+                u_completion_tokens = usage.get("completion_tokens", 0) or 0
+                u_thinking_tokens = usage.get("thinking_tokens", 0)
+                u_thinking_included_in_completion = False
+
+            prompt_tokens += u_prompt_tokens
+            cached_tokens += u_cached_tokens
+            completion_tokens += u_completion_tokens
+            thinking_tokens += u_thinking_tokens
+
+            # Calculate cost for this response
+            cost = calculate_cost(
+                model=model_name,
+                prompt_tokens=u_prompt_tokens,
+                completion_tokens=u_completion_tokens,
+                cached_tokens=u_cached_tokens,
+                thinking_tokens=u_thinking_tokens,
+                thinking_included_in_completion=u_thinking_included_in_completion,
+            )
+            if cost is not None and total_cost is not None:
+                total_cost += cost
+            else:
+                total_cost = None
 
         record: TokenUsageRecord = {
             "trial_id": refno,
@@ -319,7 +348,7 @@ def _collect_from_trajectories_dir(
             "total_completion_tokens": completion_tokens,
             "total_cached_tokens": cached_tokens,
             "total_thinking_tokens": thinking_tokens,
-            "total_steps": 1,  # zeroshot is always 1 step
+            "total_steps": len(usage_list),
             "total_cost_usd": total_cost,
         }
         if include_reasoning_effort:
@@ -351,7 +380,6 @@ def collect_zeroshot_token_usage(
 
     """
     output_dir = output_dir.resolve()
-
     # Try trajectories/ first (has more metadata)
     if (output_dir / "trajectories").exists():
         return _collect_from_trajectories_dir(output_dir, include_reasoning_effort)
@@ -447,9 +475,11 @@ def count_zeroshot_trials_per_group(
     if not trajectory_dir.exists():
         raise FileNotFoundError(f"Trajectories directory not found: {trajectory_dir}")
 
-    # Parse trajectory JSON files: trajectory__agent={agent}__model={model}__refno={refno}.json
+    # Parse trajectory JSON files:
+    # trajectory__agent={agent}__model={model}__refno={refno}.json
+    # trajectory__agent={agent}__model={model}__reasoning_effort={effort}__refno={refno}.json
     trajectory_pattern = re.compile(
-        r"trajectory__agent=([^_]+)__model=([^_]+)__refno=(.+)\.json"
+        r"trajectory__agent=([^_]+)__model=([^_]+)__(?:reasoning_effort=[^_]+__)?refno=(.+)\.json"
     )
 
     counts: dict[tuple, int] = {}

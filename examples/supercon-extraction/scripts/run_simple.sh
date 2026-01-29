@@ -22,12 +22,12 @@ cmd_args=$@
 # Server/model combinations
 # Format: "server:model" or "server:model:kwarg1=value1,kwarg2=value2"
 combinations=(
-  # "gemini:gemini-3-pro-preview"
-  # "gemini:gemini-3-flash-preview"
+  "openai:gpt-5.2-2025-12-11:openai_reasoning_effort=low"
   "openai:gpt-5.2-2025-12-11:openai_reasoning_effort=high"
   # "openai:gpt-5.2-2025-12-11:openai_reasoning_effort=medium"
-  "openai:gpt-5-mini-2025-08-07:openai_reasoning_effort=high"
-  # "openai:gpt-5-mini-2025-08-07:openai_reasoning_effort=medium"
+  "openai:gpt-5-mini-2025-08-07:openai_reasoning_effort=medium"
+  # "gemini:gemini-3-pro-preview"
+  "gemini:gemini-3-flash-preview"
 )
 
 for combo in "${combinations[@]}"; do
@@ -51,7 +51,7 @@ for combo in "${combinations[@]}"; do
 
   CMD="uv run pbench-eval -dd ${data_dir} --server ${server} -m ${model} \
     -pp prompts/targeted_stoic_extraction_prompt.md -od ${output_dir} \
-    --harbor_task_ordering_registry_path registry_data.json --max_num_papers 50 --log_level INFO ${extra_args} $cmd_args"
+    --harbor_task_ordering_registry_path registry_data.json --max_num_papers 200 --log_level INFO ${extra_args} $cmd_args"
   echo "Executing: $CMD"
   eval $CMD
 

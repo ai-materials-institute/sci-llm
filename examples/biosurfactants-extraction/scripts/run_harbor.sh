@@ -21,14 +21,16 @@ cmd_args=$@
 # Format: "agent:model" or "agent:model:kwarg1=value1,kwarg2=value2"
 # TODO: add qwen-code with qwen3-max via OpenRouter
 combinations=(
-  # "gemini-cli:gemini/gemini-3-pro-preview"
+  "gemini-cli:gemini/gemini-3-pro-preview"
   # "codex:openai/gpt-5.2-2025-12-11:reasoning_effort=medium"
-  # "gemini-cli:gemini/gemini-3-flash-preview"
+  "gemini-cli:gemini/gemini-3-flash-preview"
+  # "codex:openai/gpt-5-mini-2025-08-07:reasoning_effort=medium"
   "terminus-2:gemini/gemini-3-pro-preview"
   # "terminus-2:openai/gpt-5.2-2025-12-11:reasoning_effort=medium"
+  # "qwen-coder:qwen/qwen3-max"
 )
-BATCH_SIZE=10
-NUM_BATCHES=3
+BATCH_SIZE=50
+NUM_BATCHES=1
 
 for combo in "${combinations[@]}"; do
   # Parse agent:model:kwargs format
@@ -52,7 +54,7 @@ for combo in "${combinations[@]}"; do
     CMD="uv run python ../../src/harbor-task-gen/run_batch_harbor.py jobs start \
       --hf-tasks-repo kilian-group/biosurfactants-extraction-harbor-tasks --hf-tasks-version head \
       -a ${agent} -m ${model} ${ak_args} \
-      --workspace . --jobs-dir ${jobs_dir} --seed 1 --batch-size ${BATCH_SIZE} --batch-number ${batch} $cmd_args"
+      --workspace . --jobs-dir ${jobs_dir} --batch-size ${BATCH_SIZE} --batch-number ${batch} $cmd_args"
     echo "Executing: $CMD"
     eval $CMD
   done
