@@ -20,7 +20,7 @@ uv run pbench-extract \
     -log_level INFO
 ```
 
-For this example, the results will be saved in `out/unsupervised_llm_extraction/*.csv`.
+For this example, the results will be saved in `out/preds/*.csv` and trajectories in `out/trajectories/*.json`.
 """
 
 import argparse
@@ -166,7 +166,7 @@ async def process_single_page(
     refno: str,
     llm: llm_utils.LLMChat,
     inf_gen_config: llm_utils.InferenceGenerationConfig,
-) -> tuple[list[dict], dict]:
+) -> tuple[list[dict], LLMChatResponse | None]:
     """Process a single page and extract properties.
 
     Args:
@@ -178,7 +178,7 @@ async def process_single_page(
         inf_gen_config: InferenceGenerationConfig instance
 
     Returns:
-        Tuple of (list of property dicts, usage dict)
+        Tuple of (list of property dicts, LLMChatResponse or None)
 
     """
     # Build conversation
@@ -201,38 +201,37 @@ DO NOT extract properties that are on other pages.
         response: LLMChatResponse = await llm.generate_response_async(
             conv, inf_gen_config
         )
-        usage = response.usage
 
         # Check for errors
         if response.error:
             logger.error(f"LLM error for {refno} page {page_num}: {response.error}")
-            return [], usage
+            return [], response
 
         # Parse JSON from response
         json_data = parse_json_response(response.pred)
         if json_data is None:
             logger.warning(f"Failed to parse JSON from {refno} page {page_num}")
-            return [], usage
+            return [], response
 
         # Check for properties array
         if "properties" not in json_data:
             logger.warning(f"No 'properties' key in JSON for {refno} page {page_num}")
-            return [], usage
+            return [], response
 
         properties = json_data["properties"]
         if not isinstance(properties, list):
             logger.warning(f"'properties' is not a list for {refno} page {page_num}")
-            return [], usage
+            return [], response
 
         # Add page_num to each property for later sorting
         for prop in properties:
             prop["_page_num"] = page_num
 
-        return properties, usage
+        return properties, response
 
     except Exception as e:
         logger.error(f"Error processing {refno} page {page_num}: {e}")
-        return [], {}
+        return [], None
 
 
 async def process_paper(
@@ -241,7 +240,7 @@ async def process_paper(
     llm: llm_utils.LLMChat,
     inf_gen_config: llm_utils.InferenceGenerationConfig,
     model_name: str,
-) -> tuple[list[pd.Series], dict]:
+) -> tuple[list[pd.Series], list[LLMChatResponse]]:
     """Process a single paper by prompting the LLM one page at a time to extract properties.
 
     Args:
@@ -252,7 +251,7 @@ async def process_paper(
         model_name: Name of the LLM model used for extraction
 
     Returns:
-        Tuple of (list of pandas Series, aggregated usage dict)
+        Tuple of (list of pandas Series, list of LLMChatResponse objects)
 
     """
     # Extract refno from filename and create file object for the paper
@@ -267,7 +266,7 @@ async def process_paper(
         doc.close()
     except Exception as e:
         logger.error(f"Failed to get number of pages from {paper_path}: {e}")
-        return [], {}
+        return [], []
 
     # Create tasks for all pages
     tasks = [
@@ -279,7 +278,7 @@ async def process_paper(
     total_properties = 0
     pbar = tqdm(total=len(tasks), desc=f"Processing {refno} (0 props)")
 
-    page_results: list[tuple[list[dict], dict]] = []
+    page_results: list[tuple[list[dict], LLMChatResponse | None]] = []
     for coro in asyncio.as_completed(tasks):
         result = await coro
         page_results.append(result)
@@ -289,9 +288,10 @@ async def process_paper(
 
     pbar.close()
 
-    # Aggregate usage across all pages
-    usage_list = [result[1] for result in page_results]
-    aggregated_usage = llm_utils.aggregate_usage(usage_list)
+    # Collect all responses
+    all_responses: list[LLMChatResponse] = [
+        result[1] for result in page_results if result[1] is not None
+    ]
 
     # Flatten results and convert to CSV rows
     all_rows: list[pd.Series] = []
@@ -308,7 +308,7 @@ async def process_paper(
                 row_series["id"] = f"prop_{property_counter:03d}"
                 row_series["refno"] = refno
                 row_series["paper_pdf_path"] = str(paper_path)
-                row_series["agent"] = "zeroshot"
+                row_series["agent"] = "mass-extract"
                 row_series["model"] = model_name
                 row_series["validated"] = None
                 row_series["validator_name"] = ""
@@ -324,7 +324,7 @@ async def process_paper(
 
     logger.info(f"Total properties extracted from {refno}: {len(all_rows)}")
     llm.delete_file(file)
-    return all_rows, aggregated_usage
+    return all_rows, all_responses
 
 
 async def extract_properties(args: argparse.Namespace) -> None:
@@ -397,9 +397,11 @@ async def extract_properties(args: argparse.Namespace) -> None:
         max_output_tokens=args.max_output_tokens,
     )
 
-    # Setup output directory
-    preds_dir = args.output_dir / "unsupervised_llm_extraction"
+    # Setup output directories
+    preds_dir = args.output_dir / "preds"
     preds_dir.mkdir(parents=True, exist_ok=True)
+    trajectory_dir = args.output_dir / "trajectories"
+    trajectory_dir.mkdir(parents=True, exist_ok=True)
 
     # Sanitize model name for filename
     model_name_safe = args.model_name.replace("/", "--")
@@ -443,32 +445,35 @@ async def extract_properties(args: argparse.Namespace) -> None:
             logger.info(f"Processing {refno}...")
 
             # Process the paper
-            rows, usage = await process_paper(
+            rows, responses = await process_paper(
                 pdf_path, prompt, llm, inf_gen_config, args.model_name
             )
 
-        # Save to CSV
-        output_filename = (
-            f"extracted_properties__model={model_name_safe}__refno={refno}.csv"
-        )
-        output_path = preds_dir / output_filename
-        if len(rows) > 0:
-            df = pd.DataFrame(rows, dtype=str)
-            df.to_csv(output_path, index=False)
-            logger.info(f"Saved {len(rows)} properties from {refno} to {output_path}")
-        else:
-            logger.warning(f"No properties extracted from {refno}")
+            # Save to CSV
+            output_filename = (
+                f"extracted_properties__model={model_name_safe}__refno={refno}.csv"
+            )
+            output_path = preds_dir / output_filename
+            if len(rows) > 0:
+                df = pd.DataFrame(rows, dtype=str)
+                df.to_csv(output_path, index=False)
+                logger.info(
+                    f"Saved {len(rows)} properties from {refno} to {output_path}"
+                )
+            else:
+                logger.warning(f"No properties extracted from {refno}")
 
-        # Save usage to JSON
-        usage_dir = args.output_dir / "usage"
-        usage_dir.mkdir(parents=True, exist_ok=True)
-        usage_filename = (
-            f"usage__agent=mass_extract__model={model_name_safe}__refno={refno}.json"
-        )
-        usage_path = usage_dir / usage_filename
-        with open(usage_path, "w") as f:
-            json.dump(usage, f, indent=2)
-        logger.info(f"Saved usage for {refno} to {usage_path}")
+            # Save trajectory to JSON (prompt, llm responses, inf gen config)
+            trajectory_filename = f"trajectory__agent=mass-extract__model={model_name_safe}__refno={refno}.json"
+            trajectory_path = trajectory_dir / trajectory_filename
+            trajectory_data = {
+                "prompt": prompt,
+                "inf_gen_config": inf_gen_config.model_dump(),
+                "llm_responses": [r.model_dump() for r in responses],
+            }
+            with open(trajectory_path, "w") as f:
+                json.dump(trajectory_data, f, indent=2)
+            logger.info(f"Saved trajectory for {refno} to {trajectory_path}")
 
     # Process all PDFs concurrently with semaphore limiting
     logger.info(

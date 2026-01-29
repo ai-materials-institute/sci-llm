@@ -291,9 +291,11 @@ async def process_single_paper_task(
         logger.info(f"Processing {refno}...")
 
         # Construct output path
-        output_filename = (
-            f"extracted_properties__model={model_name_safe}__refno={refno}.csv"
+        reasoning_effort = inf_gen_config.reasoning_effort
+        reasoning_suffix = (
+            f"__reasoning_effort={reasoning_effort}" if reasoning_effort else ""
         )
+        output_filename = f"extracted_properties__model={model_name_safe}{reasoning_suffix}__refno={refno}.csv"
         output_path = preds_dir / output_filename
 
         # Skip if output file already exists and --force is not set
@@ -318,9 +320,7 @@ async def process_single_paper_task(
             logger.warning(f"No properties extracted from {refno}")
 
         # Save trajectory to JSON (prompt, llm response, inf gen config)
-        trajectory_filename = (
-            f"trajectory__agent=zeroshot__model={model_name_safe}__refno={refno}.json"
-        )
+        trajectory_filename = f"trajectory__agent=zeroshot__model={model_name_safe}{reasoning_suffix}__refno={refno}.json"
         trajectory_path = trajectory_dir / trajectory_filename
         trajectory_data = {
             "prompt": prompt,
