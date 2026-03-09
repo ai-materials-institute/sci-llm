@@ -156,7 +156,13 @@ uv run pbench-aggregate -od OUTPUT_DIR -m gemini-2.5-flash \
 - Extract properties from PDFs using an LLM:
 
 ```bash
-uv run pbench-extract -dd data-val --server gemini -m gemini-3.1-pro-preview -pp prompts/targeted_extraction_prompt_05.md -od OUTPUT_DIR --max_concurrent 100
+# Page-by-page workflow (note: leads to large number of duplicates)
+uv run pbench-extract -dd data-val --server gemini -m gemini-3.1-pro-preview \
+    -pp prompts/targeted_extraction_prompt_05.md -od OUTPUT_DIR --max_concurrent 100
+
+# Single pass workflow
+uv run pbench-eval -dd data --server gemini -m gemini-3.1-pro-preview \
+    -pp prompts/targeted_extraction_prompt_v7.md -od out-0308-arxiv --max_concurrent 100
 ```
 >Ensure that you have set the `GOOGLE_API_KEY` in the `.env` file before calling Gemini via the above command.
 
