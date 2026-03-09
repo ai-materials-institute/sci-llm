@@ -138,6 +138,8 @@ def json_property_to_csv_row(prop: dict) -> pd.Series:
         "value_number": "",
         "units": "",
         "method": prop.get("method", ""),
+        "qualifier": prop.get("qualifier", ""),
+        "is_experimental": prop.get("is_experimental", ""),
         "notes": prop.get("notes", ""),
         "location.page": location.get("page", ""),
         "location.section": location.get("section", ""),
