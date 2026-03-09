@@ -220,7 +220,6 @@ __marimo__/
 *.tar
 *.zip
 !arxiv/tests/test_data/
-.claude/
 
 *out*/
 
