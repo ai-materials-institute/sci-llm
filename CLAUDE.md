@@ -44,6 +44,10 @@ For bash files:
 
 ## Common Commands
 
+### Running Python scripts
+
+Always use `uv run python <script.py>` to run Python scripts.
+
 ### Environment Setup
 
 ```bash

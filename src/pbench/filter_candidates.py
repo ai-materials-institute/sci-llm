@@ -160,6 +160,74 @@ def process_csv_file(input_path: Path) -> pd.DataFrame | None:
     return df
 
 
+def insert_placeholder_rows(
+    df: pd.DataFrame, target_properties: list[str]
+) -> pd.DataFrame:
+    """Insert blank rows so every material has at least one row per target property.
+
+    Placeholders are inserted right after each (material, refno) group's existing rows.
+
+    Args:
+        df: DataFrame with 'material_or_system', 'property_name', and 'refno' columns
+        target_properties: List of property names that every material should have
+
+    Returns:
+        DataFrame with placeholder rows inserted in-place for missing properties
+
+    """
+    # Pre-compute existing properties per (material, refno)
+    existing_props: dict[tuple[str, str], set[str]] = {}
+    for (material, refno), group in df.groupby(["material_or_system", "refno"]):
+        existing_props[(material, refno)] = set(group["property_name"].dropna())
+
+    # Find the last row index for each (material, refno) group
+    rows: list[dict] = df.to_dict("records")
+    last_idx_per_group: dict[tuple[str, str], int] = {}
+    for i, row in enumerate(rows):
+        key = (row["material_or_system"], str(row["refno"]))
+        last_idx_per_group[key] = i
+
+    # Insert placeholders after the last row of each (material, refno) group
+    result_rows: list[dict] = []
+    n_placeholders = 0
+    for i, row in enumerate(rows):
+        result_rows.append(row)
+        key = (row["material_or_system"], str(row["refno"]))
+        if i == last_idx_per_group[key]:
+            missing = [
+                p for p in target_properties if p not in existing_props.get(key, set())
+            ]
+            for prop in missing:
+                result_rows.append(
+                    {
+                        "material_or_system": row["material_or_system"],
+                        "property_name": prop,
+                        "refno": row["refno"],
+                        "paper_pdf_path": row.get("paper_pdf_path"),
+                    }
+                )
+                n_placeholders += 1
+
+    if n_placeholders:
+        logger.info(
+            f"Inserted {n_placeholders} placeholder rows for missing target properties"
+        )
+
+    # Renumber ids to be ascending within each refno
+    result_df = pd.DataFrame(result_rows)
+    if "id" in result_df.columns:
+        counter_per_refno: dict[str, int] = {}
+        new_ids: list[str] = []
+        for refno in result_df["refno"]:
+            refno_key = str(refno)
+            idx = counter_per_refno.get(refno_key, 0)
+            new_ids.append(f"prop_{idx:03d}")
+            counter_per_refno[refno_key] = idx + 1
+        result_df["id"] = new_ids
+
+    return result_df
+
+
 def main() -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -168,6 +236,14 @@ def main() -> None:
 
     # Add base pbench arguments
     parser = pbench.add_base_args(parser)
+    parser.add_argument(
+        "--target_properties",
+        "-tp",
+        nargs="+",
+        type=str,
+        default=None,
+        help="List of target property names. Blank rows will be inserted for missing properties per material.",
+    )
 
     args = parser.parse_args()
 
@@ -175,7 +251,10 @@ def main() -> None:
     pbench.setup_logging(args.log_level)
 
     # Define input and output directories
-    input_dir = args.output_dir / "unsupervised_llm_extraction"
+    if False:
+        input_dir = args.output_dir / "unsupervised_llm_extraction"
+    else:
+        input_dir = args.output_dir / "preds"
     output_dir = args.output_dir / "candidates"
 
     # Check if input directory exists
@@ -213,6 +292,10 @@ def main() -> None:
 
     # Concatenate all dataframes
     combined_df = pd.concat(all_dfs, ignore_index=True)
+
+    # Insert placeholder rows for missing target properties
+    if args.target_properties:
+        combined_df = insert_placeholder_rows(combined_df, args.target_properties)
 
     # Save to single CSV file
     output_file = output_dir / "extracted_properties_combined.csv"
