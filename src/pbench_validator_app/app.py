@@ -909,11 +909,6 @@ def main() -> None:
         validated_count = metrics_df["validated"].notna().sum()
         st.metric("Validated", validated_count)
 
-        # Filter controls
-        filter_status = st.radio(
-            "Show", ["All", "Pending", "Valid", "Invalid", "Flagged"], index=1
-        )
-
     # Filter Data based on selection
     # We will display using the masked dataframe but save on the original dataframe (st.session_state.df)
     df_selected_pdf = st.session_state.df
@@ -929,46 +924,26 @@ def main() -> None:
         )
         df_selected_pdf = df_selected_pdf[pdf_mask]
 
-    # Then filter by validation status
-    if filter_status == "Pending":
-        filtered_indices = df_selected_pdf[df_selected_pdf["validated"].isna()].index
-    elif filter_status == "Valid":
-        filtered_indices = df_selected_pdf[df_selected_pdf["validated"] == True].index  # noqa: E712
-    elif filter_status == "Invalid":
-        filtered_indices = df_selected_pdf[df_selected_pdf["validated"] == False].index  # noqa: E712
-    elif filter_status == "Flagged":
-        filtered_indices = df_selected_pdf[df_selected_pdf["flagged"] == True].index  # noqa: E712
-    else:
-        filtered_indices = df_selected_pdf.index
+    # All property indices for this PDF (stable list — never changes on validation)
+    all_indices = list(df_selected_pdf.index)
 
-    if len(filtered_indices) == 0:
-        st.info("No properties found for this filter.")
+    if len(all_indices) == 0:
+        st.info("No properties found.")
         return
-
-    # Work with a list for stable ordering and easier indexing
-    filtered_indices = list(filtered_indices)
-
-    # Select Property Logic
-    # We use a selectbox to navigate, but we want it to be smart.
-    # Default to the first item in the filtered list if no selection.
 
     # Initialize current index in session state
     if "current_property_index" not in st.session_state:
         st.session_state.current_property_index = 0
 
-    # Helper to keep dropdown selection + index synced
     def select_property(position: int) -> None:
-        position = max(0, min(len(filtered_indices) - 1, position))
-        st.session_state.current_property_index = position
+        st.session_state.current_property_index = max(
+            0, min(len(all_indices) - 1, position)
+        )
 
-    # Make sure the current index stays within bounds when filters change
+    # Clamp to bounds
     st.session_state.current_property_index = max(
-        0, min(st.session_state.current_property_index, len(filtered_indices) - 1)
+        0, min(st.session_state.current_property_index, len(all_indices) - 1)
     )
-
-    # Ensure current index is within bounds of filtered list
-    if st.session_state.current_property_index >= len(filtered_indices):
-        st.session_state.current_property_index = 0
 
     # Create a nice label for the dropdown
     def get_label(idx: int) -> str:
@@ -982,10 +957,10 @@ def main() -> None:
         flag_status = "🚩 " if row["flagged"] else ""
         return f"{flag_status}{val_status} {row['id']} - {row['property_name']} ({row['value_string']})"
 
-    # Show dropdown for property selection first
-    dropdown_index = st.selectbox(
+    # Show dropdown — options are always ALL properties, so list is stable across validations
+    st.selectbox(
         "Select Property",
-        filtered_indices,
+        all_indices,
         format_func=get_label,
         index=st.session_state.current_property_index,
     )
@@ -1001,22 +976,15 @@ def main() -> None:
 
     with nav_col2:
         st.markdown(
-            f"<div style='text-align: center; padding: 8px;'>Property {st.session_state.current_property_index + 1} of {len(filtered_indices)}</div>",
+            f"<div style='text-align: center; padding: 8px;'>Property {st.session_state.current_property_index + 1} of {len(all_indices)}</div>",
             unsafe_allow_html=True,
         )
 
     with nav_col3:
         if st.button("Next (→) ➡️", width="stretch", key="next_btn"):
-            if st.session_state.current_property_index < len(filtered_indices) - 1:
+            if st.session_state.current_property_index < len(all_indices) - 1:
                 select_property(st.session_state.current_property_index + 1)
                 st.rerun()
-
-    # Update current index if dropdown changed (check after buttons so button clicks work first)
-    # Convert the selected df index to position in filtered_indices
-    new_position = filtered_indices.index(dropdown_index)
-    if new_position != st.session_state.current_property_index:
-        select_property(new_position)
-        st.rerun()
 
     # Add keyboard navigation using components.html
     keyboard_js = """
@@ -1073,7 +1041,7 @@ def main() -> None:
     components.html(keyboard_js, height=0)
 
     # Get selected index from current position
-    selected_index = filtered_indices[st.session_state.current_property_index]
+    selected_index = all_indices[st.session_state.current_property_index]
 
     row = df_selected_pdf.loc[selected_index]
 
@@ -1169,12 +1137,18 @@ def main() -> None:
                         == selected_index
                     ):
                         suggestion = st.session_state.pending_ai_match
-                        df_for_saving.at[selected_index, "location.page"] = suggestion["page"]
-                        df_for_saving.at[selected_index, "location.evidence"] = suggestion[
-                            "evidence"
+                        df_for_saving.at[selected_index, "location.page"] = suggestion[
+                            "page"
                         ]
-                        df_for_saving.at[selected_index, "location.section"] = "AI Discovered"
-                        df_for_saving.at[selected_index, "location.source_type"] = "text"
+                        df_for_saving.at[selected_index, "location.evidence"] = (
+                            suggestion["evidence"]
+                        )
+                        df_for_saving.at[selected_index, "location.section"] = (
+                            "AI Discovered"
+                        )
+                        df_for_saving.at[selected_index, "location.source_type"] = (
+                            "text"
+                        )
 
                         # Clear the pending match after accepting
                         del st.session_state.pending_ai_match
@@ -1183,17 +1157,16 @@ def main() -> None:
                     df_for_saving.at[selected_index, "validator_name"] = (
                         st.session_state.validator_name
                     )
-                    df_for_saving.at[selected_index, "validation_date"] = datetime.now().strftime(
-                        "%Y-%m-%d %H:%M:%S"
+                    df_for_saving.at[selected_index, "validation_date"] = (
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     )
-                    # Auto-advance if filter preserves the item (All, Flagged, etc)
-                    if filter_status in ["All", "Flagged"]:
-                        current_pos = st.session_state.current_property_index
-                        for i in range(current_pos + 1, len(filtered_indices)):
-                            idx = filtered_indices[i]
-                            if pd.isna(df_for_saving.at[idx, "validated"]):
-                                st.session_state.current_property_index = i
-                                break
+                    # Auto-advance to next unvalidated property
+                    current_pos = st.session_state.current_property_index
+                    for i in range(current_pos + 1, len(all_indices)):
+                        idx = all_indices[i]
+                        if pd.isna(df_for_saving.at[idx, "validated"]):
+                            st.session_state.current_property_index = i
+                            break
 
                     save_data(df_for_saving)
                     st.session_state.df = df_for_saving
@@ -1210,8 +1183,8 @@ def main() -> None:
                     df_for_saving.at[selected_index, "validator_name"] = (
                         st.session_state.validator_name
                     )
-                    df_for_saving.at[selected_index, "validation_date"] = datetime.now().strftime(
-                        "%Y-%m-%d %H:%M:%S"
+                    df_for_saving.at[selected_index, "validation_date"] = (
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     )
 
                     # Also clear pending AI match if invalidated
@@ -1222,14 +1195,13 @@ def main() -> None:
                     ):
                         del st.session_state.pending_ai_match
 
-                    # Auto-advance if filter preserves the item (All, Flagged, etc)
-                    if filter_status in ["All", "Flagged"]:
-                        current_pos = st.session_state.current_property_index
-                        for i in range(current_pos + 1, len(filtered_indices)):
-                            idx = filtered_indices[i]
-                            if pd.isna(df_for_saving.at[idx, "validated"]):
-                                st.session_state.current_property_index = i
-                                break
+                    # Auto-advance to next unvalidated property
+                    current_pos = st.session_state.current_property_index
+                    for i in range(current_pos + 1, len(all_indices)):
+                        idx = all_indices[i]
+                        if pd.isna(df_for_saving.at[idx, "validated"]):
+                            st.session_state.current_property_index = i
+                            break
 
                     save_data(df_for_saving)
                     st.session_state.df = df_for_saving
@@ -1242,10 +1214,7 @@ def main() -> None:
                     df_for_saving.at[selected_index, "flagged"] = new_flag_state
 
                     # Auto-advance to next property
-                    if (
-                        st.session_state.current_property_index
-                        < len(filtered_indices) - 1
-                    ):
+                    if st.session_state.current_property_index < len(all_indices) - 1:
                         st.session_state.current_property_index += 1
 
                     save_data(df_for_saving)
@@ -1292,12 +1261,12 @@ def main() -> None:
 
         # Prepare display dataframe (just for data access)
         # 1. Start index at 1
-        # display_df = df[display_cols].loc[filtered_indices].copy()
+        # display_df = df[display_cols].loc[all_indices].copy()
 
         # DataFrame Implementation with Sticky "Status | ID"
 
         # Create a display copy to manipulate
-        display_df = df_selected_pdf.loc[filtered_indices].copy()
+        display_df = df_selected_pdf.loc[all_indices].copy()
 
         # 1. Helper to get icons
         def get_status_icon(val: bool) -> str:
@@ -1377,7 +1346,7 @@ def main() -> None:
                 selected_list_position = selected_idx_label
 
                 # Check bounds just in case
-                if 0 <= selected_list_position < len(filtered_indices):
+                if 0 <= selected_list_position < len(all_indices):
                     # Update state only if changed
                     if (
                         st.session_state.current_property_index
@@ -1477,7 +1446,9 @@ def main() -> None:
                             if new_page_int != old_page_int:
                                 # Auto-Correction event
                                 df_for_saving = st.session_state.df
-                                df_for_saving.at[selected_index, "location.page"] = p_num
+                                df_for_saving.at[selected_index, "location.page"] = (
+                                    p_num
+                                )
                                 save_data(df_for_saving)
                                 st.session_state.df = df_for_saving
                                 st.toast(f"Page auto-corrected to {p_num}", icon="🔄")
