@@ -28,6 +28,7 @@ uv run pbench-filter -od OUTPUT_DIR
 
 import argparse
 import logging
+import random
 import re
 from pathlib import Path
 
@@ -228,6 +229,62 @@ def insert_placeholder_rows(
     return result_df
 
 
+def split_by_annotators(
+    df: pd.DataFrame, annotators: list[str], overlap: int, seed: int = 1
+) -> dict[str, pd.DataFrame]:
+    """Split a dataframe by refno across annotators with a shared overlap set.
+
+    Args:
+        df: DataFrame with a 'refno' column
+        annotators: List of annotator names
+        overlap: Number of refnos shared across all annotators
+        seed: Random seed for shuffling refnos
+
+    Returns:
+        Dict mapping annotator name to their sub-dataframe
+
+    """
+    refnos = list(df["refno"].unique())
+    random.seed(seed)
+    random.shuffle(refnos)
+
+    if overlap > len(refnos):
+        logger.warning(
+            f"Overlap ({overlap}) exceeds total refnos ({len(refnos)}), "
+            "all refnos will be shared"
+        )
+        overlap = len(refnos)
+
+    shared_refnos = refnos[:overlap]
+    remaining_refnos = refnos[overlap:]
+
+    # Round-robin assignment of remaining refnos
+    annotator_unique: dict[str, list[str]] = {name: [] for name in annotators}
+    for i, refno in enumerate(remaining_refnos):
+        annotator_unique[annotators[i % len(annotators)]].append(refno)
+
+    # Build sub-dataframes: overlap first, then unique
+    result: dict[str, pd.DataFrame] = {}
+    for name in annotators:
+        assigned_refnos = shared_refnos + annotator_unique[name]
+        sub_df = df[df["refno"].isin(set(assigned_refnos))].copy()
+        # Sort so shared refnos come first
+        shared_set = set(shared_refnos)
+        sub_df["_is_shared"] = sub_df["refno"].isin(shared_set)
+        sub_df = sub_df.sort_values("_is_shared", ascending=False, kind="mergesort")
+        sub_df = sub_df.drop(columns=["_is_shared"]).reset_index(drop=True)
+        result[name] = sub_df
+
+        logger.info(
+            f"Annotator '{name}': {len(assigned_refnos)} refnos "
+            f"({overlap} shared + {len(annotator_unique[name])} unique)"
+        )
+
+    logger.info(f"Shared refnos ({overlap}): {shared_refnos}")
+
+    return result
+
+
 def main() -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -243,6 +300,26 @@ def main() -> None:
         type=str,
         default=None,
         help="List of target property names. Blank rows will be inserted for missing properties per material.",
+    )
+    parser.add_argument(
+        "--annotators",
+        "-a",
+        nargs="+",
+        type=str,
+        default=None,
+        help="List of annotator names to split the combined CSV among.",
+    )
+    parser.add_argument(
+        "--overlap",
+        type=int,
+        default=10,
+        help="Number of refnos shared across all annotators (default: 10).",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=1,
+        help="Random seed for shuffling refnos (default: 1).",
     )
 
     args = parser.parse_args()
@@ -305,8 +382,23 @@ def main() -> None:
     logger.info(f"Total rows: {len(combined_df)}")
 
     # Log overall statistics
-    type_counts = combined_df["data_type"].value_counts()
-    logger.info(f"Overall data type distribution: {type_counts.to_dict()}")
+    if "data_type" in combined_df.columns:
+        type_counts = combined_df["data_type"].value_counts()
+        logger.info(f"Overall data type distribution: {type_counts.to_dict()}")
+
+    # Split by annotators if requested
+    if args.annotators:
+        annotator_dfs = split_by_annotators(
+            combined_df, args.annotators, args.overlap, args.seed
+        )
+        for name, sub_df in annotator_dfs.items():
+            annotator_dir = (
+                args.output_dir.parent / f"{args.output_dir.name}-{name}" / "candidates"
+            )
+            annotator_dir.mkdir(parents=True, exist_ok=True)
+            out_path = annotator_dir / "extracted_properties_combined.csv"
+            sub_df.to_csv(out_path, index=False)
+            logger.info(f"Saved {len(sub_df)} rows to {out_path}")
 
 
 if __name__ == "__main__":
