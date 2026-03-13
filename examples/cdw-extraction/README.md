@@ -166,10 +166,11 @@ uv run pbench-eval -dd data --server gemini -m gemini-3.1-pro-preview \
 ```
 >Ensure that you have set the `GOOGLE_API_KEY` in the `.env` file before calling Gemini via the above command.
 
-- Add `data_type` column to the CSV. The resulting CSV will be saved to `OUTPUT_DIR/candidates`.
+- Add `data_type` column to the CSV and assign papers to different annotators. The resulting CSV will be saved to `OUTPUT_DIR/candidates`. If `--annotator` is provided, an additional output directory will be created at OUTPUT_DIR-NAME.
 
 ```bash
-uv run pbench-filter -od OUTPUT_DIR
+uv run pbench-filter -od OUTPUT_DIR --target_properties "q-vector" "commensurability" "space group" \
+    --annotators fatmagul xiao joshua
 ```
 
 3. Launch the validator app and accept/reject the candidates:
