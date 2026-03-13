@@ -1076,15 +1076,34 @@ def main() -> None:
         container = st.container(border=True)
         with container:
             st.markdown(f"**Refno:** `{row.get('refno', '')}`")
-            st.markdown(f"**Material:** `{row['material_or_system']}`")
-            st.markdown(f"**Property:** `{row['property_name']}`")
-            st.markdown(f"**Value String:** `{row['value_string']}`")
-            st.markdown(f"**Value Number:** `{row['value_number']}`")
-            st.markdown(f"**Unit:** `{row['units']}`")
-            st.markdown(
-                f"**Location:** Page {row['location.page']}, {row['location.section']}"
-            )
-            st.markdown(f"**Evidence:** _{row['location.evidence']}_")
+
+            # Editable fields — changes are saved immediately
+            editable_fields = [
+                ("material_or_system", "Material"),
+                ("property_name", "Property"),
+                ("value_string", "Value String"),
+                ("location.page", "Page"),
+                ("location.section", "Section"),
+                ("location.evidence", "Evidence"),
+            ]
+            for col_key, label in editable_fields:
+                current_val = row.get(col_key, "")
+                display_val = "" if pd.isna(current_val) else str(current_val)
+                if col_key == "location.evidence":
+                    new_val = st.text_area(
+                        label,
+                        value=display_val,
+                        key=f"edit_{col_key}_{selected_index}",
+                    )
+                else:
+                    new_val = st.text_input(
+                        label,
+                        value=display_val,
+                        key=f"edit_{col_key}_{selected_index}",
+                    )
+                if new_val != display_val:
+                    st.session_state.df.at[selected_index, col_key] = new_val
+                    save_data(st.session_state.df)
 
             with st.expander("More info", expanded=True):
                 # Define columns to exclude (displayed above + system cols)
