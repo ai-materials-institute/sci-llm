@@ -162,7 +162,7 @@ uv run pbench-extract -dd data-val --server gemini -m gemini-3.1-pro-preview \
 
 # Single pass workflow
 uv run pbench-eval -dd data --server gemini -m gemini-3.1-pro-preview \
-    -pp prompts/targeted_extraction_prompt_v7.md -od out-0308-arxiv --max_concurrent 100
+    -pp prompts/targeted_extraction_prompt_v7_3.md -od OUTPUT_DIR --max_concurrent 100
 ```
 >Ensure that you have set the `GOOGLE_API_KEY` in the `.env` file before calling Gemini via the above command.
 
