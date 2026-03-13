@@ -176,24 +176,36 @@ def insert_placeholder_rows(
         DataFrame with placeholder rows inserted in-place for missing properties
 
     """
-    # Pre-compute existing properties per (material, refno)
-    existing_props: dict[tuple[str, str], set[str]] = {}
-    for (material, refno), group in df.groupby(["material_or_system", "refno"]):
-        existing_props[(material, refno)] = set(group["property_name"].dropna())
+    # Pre-compute existing properties per (material, polytype, refno)
+    existing_props: dict[tuple[str, str, str], set[str]] = {}
+    for (material, polytype, refno), group in df.groupby(
+        ["material_or_system", "polytype", "refno"]
+    ):
+        existing_props[(material, polytype, refno)] = set(
+            group["property_name"].dropna()
+        )
 
-    # Find the last row index for each (material, refno) group
+    # Find the last row index for each (material, polytype, refno) group
     rows: list[dict] = df.to_dict("records")
-    last_idx_per_group: dict[tuple[str, str], int] = {}
+    last_idx_per_group: dict[tuple[str, str, str], int] = {}
     for i, row in enumerate(rows):
-        key = (row["material_or_system"], str(row["refno"]))
+        key = (
+            row["material_or_system"],
+            str(row.get("polytype", "")),
+            str(row["refno"]),
+        )
         last_idx_per_group[key] = i
 
-    # Insert placeholders after the last row of each (material, refno) group
+    # Insert placeholders after the last row of each (material, polytype, refno) group
     result_rows: list[dict] = []
     n_placeholders = 0
     for i, row in enumerate(rows):
         result_rows.append(row)
-        key = (row["material_or_system"], str(row["refno"]))
+        key = (
+            row["material_or_system"],
+            str(row.get("polytype", "")),
+            str(row["refno"]),
+        )
         if i == last_idx_per_group[key]:
             missing = [
                 p for p in target_properties if p not in existing_props.get(key, set())
@@ -202,6 +214,7 @@ def insert_placeholder_rows(
                 result_rows.append(
                     {
                         "material_or_system": row["material_or_system"],
+                        "polytype": row.get("polytype"),
                         "property_name": prop,
                         "refno": row["refno"],
                         "paper_pdf_path": row.get("paper_pdf_path"),
