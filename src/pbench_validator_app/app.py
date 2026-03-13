@@ -134,7 +134,7 @@ def search_with_ai(
         """
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-3.1-flash-lite-preview",
             contents=[
                 types.Content(
                     role="user",
@@ -959,12 +959,19 @@ def main() -> None:
         return f"{flag_status}{val_status} {row['id']} [{refno}] - {row['property_name']} ({row['value_string']})"
 
     # Show dropdown — options are always ALL properties, so list is stable across validations
-    st.selectbox(
+    selected_value = st.selectbox(
         "Select Property",
         all_indices,
         format_func=get_label,
         index=st.session_state.current_property_index,
     )
+
+    # Update current property index when user selects from dropdown
+    if selected_value is not None:
+        new_position = all_indices.index(selected_value)
+        if new_position != st.session_state.current_property_index:
+            st.session_state.current_property_index = new_position
+            st.rerun()
 
     # Navigation buttons with keyboard shortcuts (below the dropdown)
     nav_col1, nav_col2, nav_col3 = st.columns([1, 3, 1])
