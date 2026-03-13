@@ -207,7 +207,7 @@ def load_all_predictions(
     combined_csv = args.output_dir / args.domain / "results.csv"
     if combined_csv.exists():
         logger.info(f"Loading pre-combined results from {combined_csv}")
-        return pd.read_csv(combined_csv)
+        return pd.read_csv(combined_csv, dtype={"refno": "string"})
 
     if not preds_dir.exists():
         # If input_csv was provided, main() handles it. Here we just fail if directory missing.
@@ -215,7 +215,7 @@ def load_all_predictions(
 
     # Load all JSON files (Harbor generates one per trial)
     json_files = sorted(preds_dir.glob(args.file_pattern))
-    
+
     if not json_files:
         raise ValueError(f"No JSON files found in {preds_dir}")
 
@@ -386,7 +386,7 @@ def main() -> None:
         try:
             df = load_all_predictions(args)
             logger.info(f"Loaded {len(df)} rows from JSONs")
-            
+
             # Setup Rubric
             if args.rubric_csv_filename:
                 rubric_path = Path(args.rubric_csv_filename)
@@ -397,12 +397,12 @@ def main() -> None:
 
             scores_dir = args.output_dir / args.domain / "scores"
             scores_dir.mkdir(parents=True, exist_ok=True)
-            
+
             if args.output_tag:
                 output_csv = scores_dir / f"scored_results_{args.output_tag}.csv"
             else:
                 output_csv = scores_dir / "scored_results.csv"
-            
+
             logger.info("Scoring predictions...")
             df = score_predictions(df, rubric_path, output_csv)
 
@@ -416,7 +416,7 @@ def main() -> None:
         # Let's pass the output_csv path to analyze_scores instead of dir, or update analyze_scores signature?
         # Only analyze_scores was defined above. Let's update it to take file suffix or handle writing itself.
         # Actually, simpler to just re-implement the calls here with correct paths.
-        
+
         # Analysis by material
         material_stats = []
         if "material" in df.columns:
@@ -428,13 +428,17 @@ def main() -> None:
                         "mean": mean,
                         "se": se,
                         "n": n,
-                        "mean ± se": f"{mean:.3f} ± {se:.3f}" if not np.isnan(mean) else "N/A",
+                        "mean ± se": f"{mean:.3f} ± {se:.3f}"
+                        if not np.isnan(mean)
+                        else "N/A",
                     }
                 )
 
             material_df = pd.DataFrame(material_stats)
-            material_df = material_df.sort_values("mean", ascending=False, na_position="last")
-            
+            material_df = material_df.sort_values(
+                "mean", ascending=False, na_position="last"
+            )
+
             print("\n" + "=" * 60)
             print("ANALYSIS: Mean Score by Material")
             print("=" * 60)
@@ -461,12 +465,16 @@ def main() -> None:
                         "mean": mean,
                         "se": se,
                         "n": n,
-                        "mean ± se": f"{mean:.3f} ± {se:.3f}" if not np.isnan(mean) else "N/A",
+                        "mean ± se": f"{mean:.3f} ± {se:.3f}"
+                        if not np.isnan(mean)
+                        else "N/A",
                     }
                 )
 
             property_df = pd.DataFrame(property_stats)
-            property_df = property_df.sort_values("mean", ascending=False, na_position="last")
+            property_df = property_df.sort_values(
+                "mean", ascending=False, na_position="last"
+            )
 
             print("\n" + "=" * 60)
             print("ANALYSIS: Mean Score by Property")

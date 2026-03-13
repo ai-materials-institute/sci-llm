@@ -278,13 +278,13 @@ def load_data(csv_path: Path) -> pd.DataFrame:
         # Create validated_candidates directory if it doesn't exist
         validated_dir.mkdir(parents=True, exist_ok=True)
         # Read original
-        original_df = pd.read_csv(csv_path)
+        original_df = pd.read_csv(csv_path, dtype={"refno": "string"})
         # Save immediately to validated path
         original_df.to_csv(validated_path, index=False)
         st.toast(f"Created working copy: {validated_path}", icon="🆕")
 
     # Always load from the validated path (which now guaranteed exists)
-    df = pd.read_csv(validated_path)
+    df = pd.read_csv(validated_path, dtype={"refno": "string"})
 
     # Store the WORKING path in session state so we know where to save
     st.session_state.current_working_csv_path = str(validated_path)
