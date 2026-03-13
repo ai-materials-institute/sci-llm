@@ -955,7 +955,8 @@ def main() -> None:
             val_status = "❌"
 
         flag_status = "🚩 " if row["flagged"] else ""
-        return f"{flag_status}{val_status} {row['id']} - {row['property_name']} ({row['value_string']})"
+        refno = row.get("refno", "")
+        return f"{flag_status}{val_status} {row['id']} [{refno}] - {row['property_name']} ({row['value_string']})"
 
     # Show dropdown — options are always ALL properties, so list is stable across validations
     st.selectbox(
@@ -1067,6 +1068,7 @@ def main() -> None:
 
         container = st.container(border=True)
         with container:
+            st.markdown(f"**Refno:** `{row.get('refno', '')}`")
             st.markdown(f"**Material:** `{row['material_or_system']}`")
             st.markdown(f"**Property:** `{row['property_name']}`")
             st.markdown(f"**Value String:** `{row['value_string']}`")
@@ -1088,6 +1090,7 @@ def main() -> None:
                     "location.page",
                     "location.section",
                     "location.evidence",
+                    "refno",
                 }
                 system_cols = {
                     "validated",
@@ -1290,9 +1293,14 @@ def main() -> None:
             + display_df["id"].astype(str)
         )
 
+        # Ensure refno column exists for display
+        if "refno" not in display_df.columns:
+            display_df["refno"] = ""
+
         # 3. Select Columns to Display
         cols_to_show = [
             "status_id",
+            "refno",
             "material_or_system",
             "property_name",
             "value_string",
@@ -1316,6 +1324,7 @@ def main() -> None:
                     width="stretch",
                     pinned=True,
                 ),
+                "refno": st.column_config.TextColumn("Refno", width="small"),
                 "material_or_system": st.column_config.TextColumn(
                     "Material/System", width="stretch"
                 ),
