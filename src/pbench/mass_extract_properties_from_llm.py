@@ -132,6 +132,7 @@ def json_property_to_csv_row(prop: dict) -> pd.Series:
         # "refno": refno, # NOTE: will be automatically assigned when writing to CSV
         "material_or_system": prop.get("material_or_system", ""),
         "polytype": prop.get("polytype", ""),
+        "doping": prop.get("doping", ""),
         "sample_label": prop.get("sample_label", ""),
         "property_name": prop.get("property_name", ""),
         "category": prop.get("category", ""),
