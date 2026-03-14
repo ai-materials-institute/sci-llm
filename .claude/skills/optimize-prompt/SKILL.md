@@ -33,7 +33,7 @@ If no arguments are provided, ask the user for:
 
 Run the extraction command:
 ```bash
-uv run pbench-extract -dd data-val --server gemini -m gemini-3.1-pro-preview -pp <new-prompt-path> -od out-<date>-<version> --max_concurrent 100
+uv run pbench-extract -dd data-val --server gemini -m gemini-3.1-pro-preview -pp <new-prompt-path> -od out-val-<date>-<version> --max_concurrent 100
 ```
 
 Use today's date in MMDD format and the version name for the output directory.
