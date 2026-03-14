@@ -179,9 +179,9 @@ def insert_placeholder_rows(
     # Pre-compute existing properties per (material, polytype, refno)
     existing_props: dict[tuple[str, str, str], set[str]] = {}
     for (material, polytype, refno), group in df.groupby(
-        ["material_or_system", "polytype", "refno"]
+        ["material_or_system", "polytype", "refno"], dropna=False
     ):
-        existing_props[(material, polytype, refno)] = set(
+        existing_props[(str(material), str(polytype), str(refno))] = set(
             group["property_name"].dropna()
         )
 
