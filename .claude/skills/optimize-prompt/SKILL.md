@@ -3,7 +3,7 @@ name: optimize-prompt
 description: Iterate on an extraction prompt — create a new version, run extraction, check coverage, and analyze duplicates/noise.
 argument-hint: <source-prompt> <description-of-changes>
 disable-model-invocation: true
-allowed-tools: Read, Edit, Write, Bash, Glob, Grep
+allowed-tools: Read, Edit, Write, Bash, Glob, Grep, Skill, Agent
 ---
 
 # Optimize Extraction Prompt
@@ -40,9 +40,13 @@ Use today's date in MMDD format and the version name for the output directory.
 
 ### Step 3: Check coverage
 
-Compare extracted properties against the ground truth highlighted properties at `data-val/highlighted_properties.md`.
+Run the `/check-coverage` skill with the ground truth and output directory:
 
-For each paper, verify which highlighted properties were found in the extraction output. Report coverage as X/23.
+```
+/check-coverage data-val/highlighted_properties.md out-<date>-<version>
+```
+
+This compares extracted properties against the highlighted ground truth and reports per-paper coverage.
 
 ### Step 4: Analyze noise
 
