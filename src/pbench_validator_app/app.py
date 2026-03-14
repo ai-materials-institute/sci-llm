@@ -77,8 +77,7 @@ def search_with_ai(
     pdf_path: Path,
     value: str,
     prop_name: str,
-    unit: str = "",
-    material_or_system: str = "",
+    biosurfactant_name: str = "",
 ) -> tuple[int | None, str, float]:
     """Uses Gemini to find a value in a PDF.
 
@@ -86,8 +85,7 @@ def search_with_ai(
         pdf_path: Path to the PDF file
         value: The value to search for
         prop_name: The name of the property
-        unit: The unit of the property
-        material_or_system: The material or system of the property
+        biosurfactant_name: The biosurfactant name to narrow the search
 
     Returns:
         page_num
@@ -114,11 +112,8 @@ def search_with_ai(
         else:
             prompt_text = f"I am looking for the value '{val_str}' for the property '{prop_name}' in this paper (Paper ID: {paper_id})."
 
-        if material_or_system:
-            prompt_text += f" for material '{material_or_system}'"
-
-        if unit:
-            prompt_text += f", with unit '{unit}'."
+        if biosurfactant_name:
+            prompt_text += f" for biosurfactant '{biosurfactant_name}'"
 
         prompt = f"""
         {prompt_text}
@@ -1099,11 +1094,8 @@ def main() -> None:
 
         container = st.container(border=True)
         with container:
-            st.markdown(f"**Material:** `{row['material_or_system']}`")
             st.markdown(f"**Property:** `{row['property_name']}`")
             st.markdown(f"**Value String:** `{row['value_string']}`")
-            st.markdown(f"**Value Number:** `{row['value_number']}`")
-            st.markdown(f"**Unit:** `{row['units']}`")
             st.markdown(
                 f"**Location:** Page {row['location.page']}, {row['location.section']}"
             )
@@ -1114,9 +1106,6 @@ def main() -> None:
                 displayed_cols = {
                     "property_name",
                     "value_string",
-                    "value_number",
-                    "units",
-                    "material_or_system",
                     "location.page",
                     "location.section",
                     "location.evidence",
@@ -1169,12 +1158,18 @@ def main() -> None:
                         == selected_index
                     ):
                         suggestion = st.session_state.pending_ai_match
-                        df_for_saving.at[selected_index, "location.page"] = suggestion["page"]
-                        df_for_saving.at[selected_index, "location.evidence"] = suggestion[
-                            "evidence"
+                        df_for_saving.at[selected_index, "location.page"] = suggestion[
+                            "page"
                         ]
-                        df_for_saving.at[selected_index, "location.section"] = "AI Discovered"
-                        df_for_saving.at[selected_index, "location.source_type"] = "text"
+                        df_for_saving.at[selected_index, "location.evidence"] = (
+                            suggestion["evidence"]
+                        )
+                        df_for_saving.at[selected_index, "location.section"] = (
+                            "AI Discovered"
+                        )
+                        df_for_saving.at[selected_index, "location.source_type"] = (
+                            "text"
+                        )
 
                         # Clear the pending match after accepting
                         del st.session_state.pending_ai_match
@@ -1183,8 +1178,8 @@ def main() -> None:
                     df_for_saving.at[selected_index, "validator_name"] = (
                         st.session_state.validator_name
                     )
-                    df_for_saving.at[selected_index, "validation_date"] = datetime.now().strftime(
-                        "%Y-%m-%d %H:%M:%S"
+                    df_for_saving.at[selected_index, "validation_date"] = (
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     )
                     # Auto-advance if filter preserves the item (All, Flagged, etc)
                     if filter_status in ["All", "Flagged"]:
@@ -1210,8 +1205,8 @@ def main() -> None:
                     df_for_saving.at[selected_index, "validator_name"] = (
                         st.session_state.validator_name
                     )
-                    df_for_saving.at[selected_index, "validation_date"] = datetime.now().strftime(
-                        "%Y-%m-%d %H:%M:%S"
+                    df_for_saving.at[selected_index, "validation_date"] = (
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     )
 
                     # Also clear pending AI match if invalidated
@@ -1322,14 +1317,15 @@ def main() -> None:
         )
 
         # 3. Select Columns to Display
-        cols_to_show = [
-            "status_id",
-            "material_or_system",
-            "property_name",
-            "value_string",
-            "value_number",
-            "units",
-        ]
+        cols_to_show = ["status_id", "property_name", "value_string"]
+        for i in range(1, 11):  # MAX_CONDITIONS = 10
+            col = f"condition{i}_value"
+            if (
+                col in display_df.columns
+                and display_df[col].notna().any()
+                and (display_df[col].astype(str) != "").any()
+            ):
+                cols_to_show.append(col)
         final_display_df = display_df[cols_to_show].copy()
 
         # Back to Dataframe: Best option for "Row = 1 Click" + "Spreadsheet Layout" + "Small Text"
@@ -1338,27 +1334,30 @@ def main() -> None:
         # This aligns Row 0 with Index 0, avoiding off-by-one confusion if IDs are 0-based
         final_display_df.index = range(0, len(final_display_df))
 
+        # Build column config dynamically
+        col_config = {
+            "status_id": st.column_config.TextColumn(
+                "Status | ID", width="stretch", pinned=True
+            ),
+            "property_name": st.column_config.TextColumn("Property", width="medium"),
+            "value_string": st.column_config.TextColumn("Value String", width="medium"),
+        }
+        # Add condition columns with their actual names as headers
+        for col in cols_to_show:
+            if col.startswith("condition") and col.endswith("_value"):
+                idx = col.replace("condition", "").replace("_value", "")
+                name_col = f"condition{idx}_name"
+                if name_col in display_df.columns:
+                    names = display_df[name_col].dropna()
+                    names = names[names.astype(str) != ""]
+                    label = str(names.iloc[0]) if len(names) > 0 else col
+                else:
+                    label = col
+                col_config[col] = st.column_config.TextColumn(label, width="small")
+
         event = st.dataframe(
             final_display_df,
-            column_config={
-                "status_id": st.column_config.TextColumn(
-                    "Status | ID",
-                    help="Validation Status and Property ID",
-                    width="stretch",
-                    pinned=True,
-                ),
-                "material_or_system": st.column_config.TextColumn(
-                    "Material/System", width="stretch"
-                ),
-                "property_name": st.column_config.TextColumn(
-                    "Property", width="medium"
-                ),
-                "value_string": st.column_config.TextColumn(
-                    "Value String", width="medium"
-                ),
-                "value_number": st.column_config.TextColumn("Value Num", width="small"),
-                "units": st.column_config.TextColumn("Unit", width="small"),
-            },
+            column_config=col_config,
             width="stretch",
             height=400,
             hide_index=False,  # Show the 0-based index
@@ -1477,7 +1476,9 @@ def main() -> None:
                             if new_page_int != old_page_int:
                                 # Auto-Correction event
                                 df_for_saving = st.session_state.df
-                                df_for_saving.at[selected_index, "location.page"] = p_num
+                                df_for_saving.at[selected_index, "location.page"] = (
+                                    p_num
+                                )
                                 save_data(df_for_saving)
                                 st.session_state.df = df_for_saving
                                 st.toast(f"Page auto-corrected to {p_num}", icon="🔄")
@@ -1508,15 +1509,24 @@ def main() -> None:
                 st.divider()
                 if st.button("🤖 Find with AI", key="ai_search_btn"):
                     with st.spinner("Asking Gemini to find the value in the paper..."):
+                        # Find biosurfactant name from condition columns
+                        bs_name = ""
+                        for i in range(1, 11):
+                            name_col = f"condition{i}_name"
+                            val_col = f"condition{i}_value"
+                            if name_col in row.index and str(
+                                row[name_col]
+                            ).lower().startswith("biosurfactant name"):
+                                bs_name = (
+                                    str(row[val_col]) if pd.notna(row[val_col]) else ""
+                                )
+                                break
+
                         ai_page, ai_evidence, ai_conf = search_with_ai(
                             pdf_path,
-                            value=str(row["value_string"]) or str(row["value_number"]),
+                            value=str(row["value_string"]),
                             prop_name=row["property_name"],
-                            unit=str(row["units"]) if pd.notna(row["units"]) else "",
-                            material_or_system=str(row["material_or_system"])
-                            if "material_or_system" in row
-                            and pd.notna(row["material_or_system"])
-                            else "",
+                            biosurfactant_name=bs_name,
                         )
 
                     if ai_page:
