@@ -49,7 +49,6 @@ validator = [
 [project.urls]
 
 [project.scripts]
-pbench-extract = "pbench.mass_extract_properties_from_llm:main"
 pbench-filter = "pbench.filter_candidates:main"
 pbench-eval = "pbench_eval.zeroshot:main"
 pbench-gt-embeddings = "pbench.generate_gt_embeddings:main"
