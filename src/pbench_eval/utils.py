@@ -157,10 +157,11 @@ def normalize_formula(formula: str) -> str:
 def scorer_pymatgen(pred: str, answer: str) -> bool:
     """Check if pred is a valid pymatgen composition and is close to answer.
 
-    Normalization rules:
-    1. Strip anything that doesn't look like a chemical formula. For example, "YBa2Cu3O7 thin films" should first be converted to "YBa2Cu3O7".
-    2. Convert generic formula to stoichiometric by removing variables (e.g., "YBa2Cu3O7-z" -> "YBa2Cu3O7").
-    3. Use pymatgen's Composition to parse and compare.
+    Uses a two-pass approach:
+    1. Fast path: Try direct Composition() parsing (works when LLM outputs
+       fully resolved formulas via material_or_system).
+    2. Fallback: strip_formula() + classify_and_normalize() for parametric
+       formulas (e.g., ground truth strings that still use variables).
 
     Args:
         pred: The predicted composition string.
@@ -172,16 +173,24 @@ def scorer_pymatgen(pred: str, answer: str) -> bool:
     """
     assert isinstance(pred, str), "pred must be a string"
     assert isinstance(answer, str), "answer must be a string"
-    # Strip non-formula text and extract variable values
-    # e.g., "La2-xSrxCuO4 (x=0.15) thin films" -> ("La2-xSrxCuO4", {'x': 0.15})
-    pred, pred_vars = strip_formula(pred)
-    answer, answer_vars = strip_formula(answer)
+
+    # Fast path: try direct Composition() parsing on both strings
+    try:
+        pred_comp = Composition(pred)
+        answer_comp = Composition(answer)
+        return pred_comp.almost_equals(answer_comp)
+    except Exception:
+        pass
+
+    # Fallback: strip non-formula text and normalize parametric formulas
+    pred_stripped, pred_vars = strip_formula(pred)
+    answer_stripped, answer_vars = strip_formula(answer)
 
     pred_formula, pred_formula_type, pred_notes = classify_and_normalize(
-        pred, pred_vars
+        pred_stripped, pred_vars
     )
     answer_formula, answer_formula_type, answer_notes = classify_and_normalize(
-        answer, answer_vars
+        answer_stripped, answer_vars
     )
 
     # Check for formulas that can't be parsed by pymatgen
@@ -191,8 +200,8 @@ def scorer_pymatgen(pred: str, answer: str) -> bool:
         or answer_formula_type in unparseable_types
     ):
         logger.warning(
-            f"Unparseable formula detected pred: '{pred}' ({pred_formula_type}, notes: {pred_notes}), "
-            f"answer: '{answer}' ({answer_formula_type}, notes: {answer_notes})"
+            f"Unparseable formula detected pred: '{pred_stripped}' ({pred_formula_type}, notes: {pred_notes}), "
+            f"answer: '{answer_stripped}' ({answer_formula_type}, notes: {answer_notes})"
         )
         return False
 
