@@ -334,6 +334,12 @@ def main() -> None:
         default=1,
         help="Random seed for shuffling refnos (default: 1).",
     )
+    parser.add_argument(
+        "--paper_list",
+        type=Path,
+        default=None,
+        help="Path to Paper_List.csv with 'file_path' and 'Google Drive Link' columns.",
+    )
 
     args = parser.parse_args()
 
@@ -382,6 +388,27 @@ def main() -> None:
 
     # Concatenate all dataframes
     combined_df = pd.concat(all_dfs, ignore_index=True)
+
+    # Merge Google Drive links from Paper_List.csv
+    if args.paper_list:
+        paper_list_path: Path = args.paper_list
+        if paper_list_path.exists():
+            paper_list_df = pd.read_csv(
+                paper_list_path, usecols=["file_path", "Google Drive Link"]
+            )
+            paper_list_df = paper_list_df.rename(
+                columns={"Google Drive Link": "gdrive_url"}
+            )
+            combined_df["_filename"] = combined_df["paper_pdf_path"].apply(
+                lambda p: Path(p).name if pd.notna(p) else ""
+            )
+            combined_df = combined_df.merge(
+                paper_list_df, left_on="_filename", right_on="file_path", how="left"
+            )
+            combined_df = combined_df.drop(columns=["_filename", "file_path"])
+            logger.info(f"Merged Google Drive links from {paper_list_path}")
+        else:
+            logger.warning(f"Paper list file not found: {paper_list_path}")
 
     # Insert placeholder rows for missing target properties
     if args.target_properties:

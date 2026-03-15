@@ -232,6 +232,12 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if "paper_pdf_path" not in df.columns:
         df["paper_pdf_path"] = None
 
+    # Ensure gdrive_url column exists
+    if "gdrive_url" not in df.columns:
+        df["gdrive_url"] = ""
+    else:
+        df["gdrive_url"] = df["gdrive_url"].astype(object).fillna("")
+
     # Ensure location columns exist (crucial for extraction pipeline compatibility)
     if "location.page" not in df.columns:
         df["location.page"] = None  # Default to None so we can auto-discover it
@@ -1076,6 +1082,9 @@ def main() -> None:
         container = st.container(border=True)
         with container:
             st.markdown(f"**Refno:** `{row.get('refno', '')}`")
+            gdrive_url = row.get("gdrive_url", "")
+            if gdrive_url:
+                st.markdown(f"**Google Drive:** [Open PDF]({gdrive_url})")
 
             # Editable fields — changes are saved immediately
             editable_fields = [
