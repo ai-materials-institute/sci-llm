@@ -133,14 +133,10 @@ def json_property_to_csv_row(prop: dict) -> pd.Series:
         "material_or_system": prop.get("material_or_system", ""),
         "polytype": prop.get("polytype", ""),
         "doping": prop.get("doping", ""),
-        "sample_label": prop.get("sample_label", ""),
         "property_name": prop.get("property_name", ""),
-        "category": prop.get("category", ""),
         "value_string": prop.get("value_string", ""),
-        "value_number": "",
-        "units": "",
-        "method": prop.get("method", ""),
         "qualifier": prop.get("qualifier", ""),
+        "method": prop.get("method", ""),
         "is_experimental": prop.get("is_experimental", ""),
         "notes": prop.get("notes", ""),
         "location.page": location.get("page", ""),
@@ -148,8 +144,6 @@ def json_property_to_csv_row(prop: dict) -> pd.Series:
         "location.source_type": location.get("source_type", ""),
         "location.evidence": location.get("evidence", ""),
         "location.figure_or_table": location.get("figure_or_table", ""),
-        "temperature_value": prop.get("temperature_value", ""),
-        "temperature_qualifier": prop.get("temperature_qualifier", ""),
     }
 
     # Add the flattened condition columns
