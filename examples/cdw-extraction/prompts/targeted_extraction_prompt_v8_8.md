@@ -291,11 +291,17 @@ When a property is measured or computed under an applied magnetic or electric fi
 - If a property is reported at multiple temperatures, fields, pressures, or compositions, create separate entries.
 - Include properties from text, tables, figures, and captions.
 
-**DEDUPLICATION RULES**
-- Extract each distinct (material, property_name, value_string) combination ONLY ONCE.
-- If the same property value is restated on multiple pages (e.g., abstract, introduction, discussion, summary), create ONE entry using the location where it is most precisely stated (e.g., prefer "ε = 0.230(2)" over "~0.23").
-- Do NOT create a new entry just because the same fact appears in a different section or caption.
-- For q-vectors: if a material has multiple symmetry-equivalent CDW wavevectors under the same conditions, combine them into one entry with semicolons rather than creating separate rows.
+**DEDUPLICATION & CROSS-SECTION MERGING**
+
+Each distinct property measurement gets exactly ONE entry.
+
+The abstract often reports a rounded or approximate value, the results/tables report the precise value, and the methods section describes the measurement protocol. When these refer to the SAME underlying measurement, merge them into ONE entry: keep the most precise value_string (e.g., `"0.230(2)"` from results, not `"~0.23"` from abstract), and pull conditions from ALL mentions (e.g., temperature from results, pressure from methods, field from figure caption).
+
+Entries that share similar values but differ in conditions (e.g., different temperature, pressure, or field) or doping level (e.g., underdoped vs. optimally doped, or x = 0.12 vs. x = 0.15) ARE distinct and each get their own entry.
+
+For tables: each row with distinct conditions is its own entry. If a table value is also mentioned in the text (e.g., abstract highlights the best result from a table), that is still ONE underlying measurement — do NOT create a separate entry for the text mention. Merge conditions from both the table and surrounding text/methods into that single entry.
+
+For q-vectors: if a material has multiple symmetry-equivalent CDW wavevectors under the same conditions, combine them into one entry with semicolons rather than creating separate rows.
 
 ## LOCATION / GROUNDING (MANDATORY)
 

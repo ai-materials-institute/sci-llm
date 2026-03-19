@@ -87,13 +87,31 @@ Many transition-metal dichalcogenides and layered materials have polytype prefix
 
 When the paper specifies a doping level or doping regime for the material being measured, record it in the `doping` field. This captures information that may not be fully encoded in the chemical formula.
 
-**Allowed formats:**
-- Natural language: `"optimally doped"`, `"underdoped"`, `"overdoped"`, `"lightly doped"`, `"heavily doped"`, `"pristine"`, `"undoped"`
-- Explicit values: `"δ = 0.07"`, `"x = 0.15"`, `"x = 1/8"`
-- Combined: `"underdoped, x = 0.12"`, `"optimally doped, T_c = 70 K"`
+**The `doping` field uses a standardized format** to enable programmatic comparison. It consists of up to three semicolon-separated components, in this order:
 
-**Rules:**
-- If the paper states a doping regime (e.g., "underdoped LSCO"), record it even if the exact doping value is already in `material_or_system`
+```
+<regime>; <variable> = <value>; <dopant>
+```
+
+Each component is optional — include only what the paper explicitly states. Omit the entire field if no doping information is given.
+
+**Component 1 — Regime** (qualitative doping level):
+- Allowed values: `"undoped"`, `"lightly doped"`, `"underdoped"`, `"optimally doped"`, `"overdoped"`, `"heavily doped"`
+- Map synonyms: `"pristine"` → `"undoped"`, `"slightly doped"` → `"lightly doped"`
+
+**Component 2 — Doping variable** (quantitative):
+- Format: `<variable> = <decimal_number>` (always use decimals, not fractions)
+- Examples: `"x = 0.125"`, `"x = 0.15"`, `"delta = 0.07"`
+- Convert fractions: `x = 1/8` → `"x = 0.125"`
+- If the paper gives both a nominal and estimated value, use the estimated value
+
+**Component 3 — Dopant element or species**:
+- Format: `<Element>-doped` (e.g., `"Sr-doped"`, `"Nd-doped"`, `"Cu-intercalated"`)
+- Only include if the dopant is not already obvious from the chemical formula
+
+**Standardization rules:**
+- Do NOT include T_c, sample labels, or other metadata in the doping field — put those in `notes`
+- Do NOT include material names (e.g., "LBSCO") in the doping field
 - If no doping information is stated or implied, omit the field entirely
 - Do NOT infer doping level from the chemical formula alone — only record what the paper explicitly states
 
@@ -102,9 +120,14 @@ When the paper specifies a doping level or doping regime for the material being 
 | Paper text | → | doping |
 |------------|---|--------|
 | "optimally doped Bi2212" | → | `"optimally doped"` |
-| "underdoped sample with T_c = 70 K" | → | `"underdoped, T_c = 70 K"` |
+| "underdoped sample with T_c = 70 K" | → | `"underdoped"` |
 | "La₂₋ₓSrₓCuO₄ (x = 0.12)" | → | `"x = 0.12"` |
+| "underdoped LSCO with x = 0.12" | → | `"underdoped; x = 0.12"` |
+| "Nd-doped LBCO" | → | `"Nd-doped"` |
+| "Sr-doped La₂CuO₄ (x = 0.15)" | → | `"x = 0.15; Sr-doped"` |
 | "pristine TaS2" | → | `"undoped"` |
+| "undoped monolayer VSe2" | → | `"undoped"` |
+| "Cu-intercalated 1T-TiSe2 (x = 0.02)" | → | `"x = 0.02; Cu-intercalated"` |
 | (no doping mentioned) | → | *(omit)* |
 
 ### 1. Commensurability
@@ -291,11 +314,17 @@ When a property is measured or computed under an applied magnetic or electric fi
 - If a property is reported at multiple temperatures, fields, pressures, or compositions, create separate entries.
 - Include properties from text, tables, figures, and captions.
 
-**DEDUPLICATION RULES**
-- Extract each distinct (material, property_name, value_string) combination ONLY ONCE.
-- If the same property value is restated on multiple pages (e.g., abstract, introduction, discussion, summary), create ONE entry using the location where it is most precisely stated (e.g., prefer "ε = 0.230(2)" over "~0.23").
-- Do NOT create a new entry just because the same fact appears in a different section or caption.
-- For q-vectors: if a material has multiple symmetry-equivalent CDW wavevectors under the same conditions, combine them into one entry with semicolons rather than creating separate rows.
+**DEDUPLICATION & CROSS-SECTION MERGING**
+
+Each distinct property measurement gets exactly ONE entry.
+
+The abstract often reports a rounded or approximate value, the results/tables report the precise value, and the methods section describes the measurement protocol. When these refer to the SAME underlying measurement, merge them into ONE entry: keep the most precise value_string (e.g., `"0.230(2)"` from results, not `"~0.23"` from abstract), and pull conditions from ALL mentions (e.g., temperature from results, pressure from methods, field from figure caption).
+
+Entries that share similar values but differ in conditions (e.g., different temperature, pressure, or field) or doping level (e.g., underdoped vs. optimally doped, or x = 0.12 vs. x = 0.15) ARE distinct and each get their own entry.
+
+For tables: each row with distinct conditions is its own entry. If a table value is also mentioned in the text (e.g., abstract highlights the best result from a table), that is still ONE underlying measurement — do NOT create a separate entry for the text mention. Merge conditions from both the table and surrounding text/methods into that single entry.
+
+For q-vectors: if a material has multiple symmetry-equivalent CDW wavevectors under the same conditions, combine them into one entry with semicolons rather than creating separate rows.
 
 ## LOCATION / GROUNDING (MANDATORY)
 
