@@ -360,11 +360,13 @@ def main() -> None:
         return
 
     # Find all CSV files in input directory
-    csv_files = sorted(input_dir.glob("extracted_properties*.csv"))
+    csv_files = sorted(
+        input_dir.glob(f"extracted_properties__model={args.model_name}*.csv")
+    )
 
     if not csv_files:
         logger.warning(
-            f"No CSV files matching pattern 'extracted_properties*.csv' found in {input_dir}"
+            f"No CSV files matching pattern 'extracted_properties__model={args.model_name}*.csv' found in {input_dir}"
         )
         return
 
@@ -389,7 +391,8 @@ def main() -> None:
     # Concatenate all dataframes
     combined_df = pd.concat(all_dfs, ignore_index=True)
 
-    # Merge Google Drive links from Paper_List.csv
+    # Load Paper_List.csv once for reuse
+    paper_list_df: pd.DataFrame | None = None
     if args.paper_list:
         paper_list_path: Path = args.paper_list
         if paper_list_path.exists():
@@ -399,23 +402,46 @@ def main() -> None:
             paper_list_df = paper_list_df.rename(
                 columns={"Google Drive Link": "gdrive_url"}
             )
-            combined_df["_filename"] = combined_df["paper_pdf_path"].apply(
-                lambda p: Path(p).name if pd.notna(p) else ""
-            )
-            combined_df = combined_df.merge(
-                paper_list_df, left_on="_filename", right_on="file_path", how="left"
-            )
-            combined_df = combined_df.drop(columns=["_filename", "file_path"])
-            logger.info(f"Merged Google Drive links from {paper_list_path}")
         else:
             logger.warning(f"Paper list file not found: {paper_list_path}")
+
+    # Report papers with no extracted properties
+    paper_db_dir = args.data_dir / "Paper_DB"
+    if paper_db_dir.exists():
+        all_pdf_filenames = {p.name for p in paper_db_dir.glob("*.pdf")}
+        extracted_filenames = set(
+            combined_df["paper_pdf_path"].dropna().apply(lambda p: Path(p).name)
+        )
+        missing_filenames = sorted(all_pdf_filenames - extracted_filenames)
+        if missing_filenames:
+            missing_df = pd.DataFrame({"file_path": missing_filenames})
+            if paper_list_df is not None:
+                missing_df = missing_df.merge(paper_list_df, on="file_path", how="left")
+            missing_output_path = output_dir / "papers_without_extractions.csv"
+            missing_df.to_csv(missing_output_path, index=False)
+            logger.warning(
+                f"No properties extracted for {len(missing_filenames)}/{len(all_pdf_filenames)} papers, saved to {missing_output_path}"
+            )
+
+    # Merge Google Drive links from Paper_List.csv
+    if paper_list_df is not None:
+        combined_df["_filename"] = combined_df["paper_pdf_path"].apply(
+            lambda p: Path(p).name if pd.notna(p) else ""
+        )
+        combined_df = combined_df.merge(
+            paper_list_df, left_on="_filename", right_on="file_path", how="left"
+        )
+        combined_df = combined_df.drop(columns=["_filename", "file_path"])
+        logger.info(f"Merged Google Drive links from {args.paper_list}")
 
     # Insert placeholder rows for missing target properties
     if args.target_properties:
         combined_df = insert_placeholder_rows(combined_df, args.target_properties)
 
     # Save to single CSV file
-    output_file = output_dir / "extracted_properties_combined.csv"
+    output_file = (
+        output_dir / f"extracted_properties_combined__model={args.model_name}.csv"
+    )
     combined_df.to_csv(output_file, index=False)
 
     logger.info(f"Combined {len(all_dfs)} CSV files into {output_file}")
@@ -436,7 +462,10 @@ def main() -> None:
                 args.output_dir.parent / f"{args.output_dir.name}-{name}" / "candidates"
             )
             annotator_dir.mkdir(parents=True, exist_ok=True)
-            out_path = annotator_dir / "extracted_properties_combined.csv"
+            out_path = (
+                annotator_dir
+                / f"extracted_properties_combined__model={args.model_name}.csv"
+            )
             sub_df.to_csv(out_path, index=False)
             logger.info(f"Saved {len(sub_df)} rows to {out_path}")
 
