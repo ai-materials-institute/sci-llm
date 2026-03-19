@@ -60,7 +60,7 @@ uv run python ../../src/harbor-task-gen/run_batch_harbor.py jobs start \
 
 </details>
 
-2. Compute task-average precision and recall by agent and model:
+2. Use LLM judge for property name matching between extracted and ground-truth properties:
 
 ```bash
 # Generate property name embeddings
@@ -70,18 +70,6 @@ uv run pbench-pred-embeddings -jd JOBS_DIR -od OUTPUT_DIR
 uv run pbench-generate-matches -jd JOBS_DIR -od OUTPUT_DIR -m gemini-2.5-flash \
     --hf_repo kilian-group/supercon-extraction --hf_split full --hf_revision v0.2.1 \
     --prompt_path prompts/property_matching_prompt.md
-
-# Compute precision (material-based matching for supercon)
-uv run pbench-score-precision -jd JOBS_DIR -od OUTPUT_DIR -m gemini-2.5-flash \
-    --rubric_path scoring/rubric_4.csv \
-    --conversion_factors_path scoring/si_conversion_factors.csv \
-    --matching_mode material --log_level ERROR
-
-# Compute recall (condition-based matching for supercon)
-uv run pbench-score-recall -jd JOBS_DIR -od OUTPUT_DIR -m gemini-2.5-flash \
-    --rubric_path scoring/rubric_4.csv \
-    --conversion_factors_path scoring/si_conversion_factors.csv \
-    --matching_mode material --log_level ERROR
 ```
 
 <details>
@@ -95,38 +83,15 @@ uv run pbench-pred-embeddings -jd JOBS_DIR -od OUTPUT_DIR
 uv run pbench-generate-matches -jd JOBS_DIR -od OUTPUT_DIR -m gemini-2.5-flash \
     --hf_repo kilian-group/supercon-post-2021-extraction --hf_split full --hf_revision v0.0.1 \
     --prompt_path prompts/property_matching_prompt.md
-
-# Compute precision (material-based matching for supercon)
-uv run pbench-score-precision -jd JOBS_DIR -od OUTPUT_DIR -m gemini-2.5-flash \
-    --rubric_path scoring/rubric_4.csv \
-    --conversion_factors_path scoring/si_conversion_factors.csv \
-    --matching_mode material --log_level ERROR
-
-# Compute recall (condition-based matching for supercon)
-uv run pbench-score-recall -jd JOBS_DIR -od OUTPUT_DIR -m gemini-2.5-flash \
-    --rubric_path scoring/rubric_4.csv \
-    --conversion_factors_path scoring/si_conversion_factors.csv \
-    --matching_mode material --log_level ERROR
 ```
 
 </details>
 
-3. Compute task-average token usage, steps, and cost:
-
-```bash
-uv run python format_tokens.py -jd JOBS_DIR
-```
-
-4. Compute evidence metrics:
-
-<details>
-    <summary>Instructions for SuperCon Post-2021</summary>
+4. Compute evidence metrics for SuperCon Post-2021 only (since SuperCon original does not provide the ground-truth evidence):
 
 ```bash
 uv run pbench-score-evidence -od out-post-2021-no-agent --hf_repo kilian-group/supercon-post-2021-extraction --hf_split full --hf_revision v0.0.1
 ```
-
-</details>
 
 ### Using the LLM API (no Harbor)
 
@@ -141,7 +106,7 @@ uv run pbench-eval -dd DATA_DIR --server gemini -m gemini-3-pro-preview -pp prom
     --harbor_task_ordering_registry_path registry_data.json --max_num_papers 50 -od OUTPUT_DIR
 ```
 
-2. Compute task-average precision and recall by model:
+2. Use LLM judge for property name matching between extracted and ground-truth properties:
 
 ```bash
 # Generate embeddings for predicted property names
@@ -151,29 +116,7 @@ uv run pbench-pred-embeddings -od OUTPUT_DIR
 uv run pbench-generate-matches -od OUTPUT_DIR -m gemini-2.5-flash \
     --hf_repo kilian-group/supercon-extraction --hf_split full --hf_revision v0.2.1 \
     --prompt_path prompts/property_matching_prompt.md
-
-# Compute precision (material-based matching for supercon)
-uv run pbench-score-precision -od OUTPUT_DIR -m gemini-2.5-flash \
-    --rubric_path scoring/rubric_4.csv \
-    --conversion_factors_path scoring/si_conversion_factors.csv \
-    --matching_mode material
-
-# Compute recall (condition-based matching for supercon)
-uv run pbench-score-recall -od OUTPUT_DIR -m gemini-2.5-flash \
-    --rubric_path scoring/rubric_4.csv \
-    --conversion_factors_path scoring/si_conversion_factors.csv \
-    --matching_mode material
 ```
-<!-- ```bash
-# Generate embeddings for predicted property names
-uv run python generate_pred_embeddings.py -od OUTPUT_DIR
-# Query LLM to determine best match between generated and ground-truth property name:
-uv run python generate_property_name_matches.py -od OUTPUT_DIR -m gemini-2.5-flash
-# Compute precision:
-uv run python score_precision.py -od OUTPUT_DIR
-# Compute recall:
-uv run python score_recall.py -od OUTPUT_DIR
-``` -->
 
 <details>
     <summary>Instructions for SuperCon Post-2021</summary>
@@ -189,49 +132,24 @@ uv run pbench-pred-embeddings -od OUTPUT_DIR
 uv run pbench-generate-matches -od out-post-2021-no-agent -m gemini-2.5-flash \
     --hf_repo kilian-group/supercon-post-2021-extraction --hf_split full --hf_revision v0.0.1 \
     --prompt_path prompts/property_matching_prompt.md
-
-# Compute precision
-uv run pbench-score-precision -od out-post-2021-no-agent -m gemini-2.5-flash \
-    --rubric_path scoring/rubric_4.csv \
-    --conversion_factors_path scoring/si_conversion_factors.csv \
-    --matching_mode material --log_level ERROR
-
-# Compute recall
-uv run pbench-score-recall -od out-post-2021-no-agent -m gemini-2.5-flash \
-    --rubric_path scoring/rubric_4.csv \
-    --conversion_factors_path scoring/si_conversion_factors.csv \
-    --matching_mode material --log_level ERROR
 ```
 
 </details>
 
-6. Compute task-average token usage, steps, and cost:
-
-```bash
-uv run python format_tokens.py -od OUTPUT_DIR
-```
-
-7. Aggregate accuracy and token cost:
+3. Aggregate accuracy and dollar/token cost:
 
 TODO:
 - [ ] Allow user to specify precision, recall, or F1. Currently, it will compute F1 scores.
 
-<!-- ```bash
-uv run python format_accuracy_tokens.py -jd JOBS_DIR -od OUTPUT_DIR -m gemini-2.5-flash \
-    --rubric_path scoring/rubric_4.csv \
-    --conversion_factors_path scoring/si_conversion_factors.csv \
-    --matching_mode material --log_level ERROR --x-axis cost
-``` -->
-
 ```bash
 # Total cost
-uv run pbench-aggregate -od out-post-2021-no-agent -m gemini-2.5-flash \
+uv run pbench-aggregate -od OUTPUT_DIR -m gemini-2.5-flash \
     --rubric_path scoring/rubric_5.csv \
     --conversion_factors_path scoring/si_conversion_factors.csv \
     --matching_mode material --log_level ERROR --x-axis cost
 
 # Total tokens
-uv run pbench-aggregate -od out-post-2021-no-agent -m gemini-2.5-flash \
+uv run pbench-aggregate -od OUTPUT_DIR -m gemini-2.5-flash \
     --rubric_path scoring/rubric_5.csv \
     --conversion_factors_path scoring/si_conversion_factors.csv \
     --matching_mode material --log_level ERROR --x-axis tokens
