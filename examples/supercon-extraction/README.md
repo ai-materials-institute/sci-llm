@@ -136,7 +136,29 @@ uv run pbench-generate-matches -od out-post-2021-no-agent -m gemini-2.5-flash \
 
 </details>
 
-3. Aggregate accuracy and dollar/token cost:
+3. Compute average F1, precision, recall scores using the following commands:
+
+```bash
+# Compute F1 using material-based matching
+uv run pbench-score-f1 -od out-supercon-no-agent -m gemini-2.5-flash \
+    --rubric_path scoring/rubric_5.csv \
+    --conversion_factors_path scoring/si_conversion_factors.csv \
+    --matching_mode material --log_level ERROR
+
+# Compute precision using material-based matching
+uv run pbench-score-precision -jd JOBS_DIR -od OUTPUT_DIR -m gemini-2.5-flash \
+    --rubric_path scoring/rubric_5.csv \
+    --conversion_factors_path scoring/si_conversion_factors.csv \
+    --matching_mode material --log_level ERROR
+
+# Compute recall using material-based matching
+uv run pbench-score-recall -jd JOBS_DIR -od OUTPUT_DIR -m gemini-2.5-flash \
+    --rubric_path scoring/rubric_5.csv \
+    --conversion_factors_path scoring/si_conversion_factors.csv \
+    --matching_mode material --log_level ERROR
+```
+
+4. Aggregate accuracy and dollar/token cost:
 
 TODO:
 - [ ] Allow user to specify precision, recall, or F1. Currently, it will compute F1 scores.
